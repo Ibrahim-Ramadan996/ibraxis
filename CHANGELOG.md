@@ -45,3 +45,9 @@ Expanded import inputs, selection preview, bounded ZIP decoder and tests.
 - GitHub Pages static build and deployment workflow; private admin remains available via Codespaces.
 - Private automatic data catalog with bounded parsing and format recognition.
 - Database files accepted as private archive inputs (sidecars excluded), no imported SQL or model execution.
+
+## 1.2.0 — AXIS AI Agent (Phase 1)
+- Owner-only AI action proposals for public identity, design and SEO settings, including an exact old/new diff.
+- Explicit approval, session-bound single-use proposals, expiry, cancellation, stale-site protection and revision history.
+- Private content drafts (including bilingual fields); questions do not require approval.
+- No autonomous public deployment, code execution, deletion, or access to private records or secrets. Existing GitHub data and Pages workflow unchanged.

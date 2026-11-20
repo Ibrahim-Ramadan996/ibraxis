@@ -1,4 +1,5 @@
 import {axisContext,axisInstruction,validateAxisPlan} from './axis-agent.mjs';
+import {createPublisher} from './publisher.mjs';
 import {indexImports} from './data-index.mjs';
 import {FileStore} from './file-store.mjs';
 import {tables,restoreRows} from './hybrid-codec.mjs';
@@ -20,6 +21,7 @@ import {readFileSync,mkdirSync,existsSync} from 'node:fs';
 import {dirname} from 'node:path';
 const path=process.env.DB_PATH||'data/ecosystem.sqlite'; mkdirSync(dirname(path),{recursive:true});
 const store=new FileStore(process.env.DATA_DIR||path+'.files'); await store.init();
+const publisher=createPublisher({store});
 const rawDB=new DatabaseSync(':memory:'); const db=rawDB; db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,kind TEXT NOT NULL,brand TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,status TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP); CREATE INDEX IF NOT EXISTS records_lookup ON records(kind,brand,status); CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,action TEXT,created TEXT DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY CHECK(id=1),salt TEXT,hash TEXT);`);
 for(const col of ['ar_title','en_title','ar_body','en_body','icon','catalog']){if(!db.prepare("PRAGMA table_info(records)").all().some(x=>x.name===col))db.exec(`ALTER TABLE records ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);}
 db.exec(`CREATE TABLE IF NOT EXISTS revisions(id INTEGER PRIMARY KEY,record_id TEXT NOT NULL,snapshot TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP); CREATE INDEX IF NOT EXISTS revisions_record ON revisions(record_id,id); CREATE TABLE IF NOT EXISTS conversions(inquiry_id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES records(id)); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
@@ -72,6 +74,7 @@ if(p==='/api/inquiry'&&m==='POST'){if(limited(ip+':inquiry',5))return send(r,429
 if(!p.startsWith('/api/'))return send(r,404,{error:'Not found'});if(!auth)return send(r,401,{error:'Login required'});
 if(p==='/api/storage'&&m==='GET')return send(r,200,store.status);
 if(p==='/api/storage/sync'&&m==='POST')return send(r,200,await store.sync());
+if(p==='/api/storage/publish'&&['GET','POST'].includes(m)){try{if(m==='GET')return send(r,200,await publisher.status());if(!/^application\/json(?:;|$)/i.test(q.headers['content-type']||''))return send(r,415,{error:'JSON required'});const b=await body(q);return send(r,202,await publisher.publish(b.confirm));}catch(e){return send(r,e.status||502,{error:e.status?e.message:'Publishing unavailable'});}}
 if(p==='/api/records/visibility'&&m==='POST'){const b=await body(q),id=clean(b.id,32),action=b.action;const row=db.prepare('SELECT * FROM records WHERE id=?').get(id);if(!row)return send(r,404,{error:'Not found'});const next={hide:'draft',publish:'published',trash:'deleted',restore:'draft'}[action];if(!next||b.confirm!==true||(action==='publish'&&!publicKinds.includes(row.kind))||(row.status==='deleted'&&action!=='restore')||(action==='restore'&&row.status!=='deleted'))return send(r,400,{error:'Invalid action or confirmation'});db.exec('BEGIN');try{snapshot(id);db.prepare('UPDATE records SET status=? WHERE id=?').run(next,id);audit(action+' '+id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(r,200,{id,status:next});}
 if(p==='/api/showcases'&&m==='GET')return send(r,200,db.prepare('SELECT * FROM showcases ORDER BY updated DESC').all().map(x=>({id:x.id,updated:x.updated,...JSON.parse(x.value)})));
 if(p==='/api/showcases/refresh'&&m==='POST'){if(limited(ip+':activity',5))return send(r,429,{error:'Try later'});const b=await body(q),row=db.prepare('SELECT * FROM showcases WHERE id=?').get(clean(b.id,32));if(!row)return send(r,404,{error:'Not found'});const v=JSON.parse(row.value);if(v.deleted||v.kind!=='activity')return send(r,400,{error:'Not an activity record'});const metric=await fetchActivity(v.url);const updated=db.prepare('UPDATE showcases SET value=?,updated=? WHERE id=? AND updated=?').run(JSON.stringify({...v,...metric}),new Date().toISOString(),row.id,row.updated);if(!updated.changes)return send(r,409,{error:'Record changed; try again'});audit('activity refreshed '+row.id);return send(r,200,{ok:true});}
