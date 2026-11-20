@@ -1,3 +1,4 @@
+import {axisContext,axisInstruction,validateAxisPlan} from './axis-agent.mjs';
 import {indexImports} from './data-index.mjs';
 import {FileStore} from './file-store.mjs';
 import {tables,restoreRows} from './hybrid-codec.mjs';
@@ -27,7 +28,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS showcases(id TEXT PRIMARY KEY, value TEXT NO
 db.exec(`CREATE TABLE IF NOT EXISTS site_revisions(id INTEGER PRIMARY KEY, snapshot TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP);`);
 db.exec(`CREATE TABLE IF NOT EXISTS data_experiences(project_id TEXT PRIMARY KEY REFERENCES records(id), value TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 0);`);
 const getSite=()=>JSON.parse(db.prepare("SELECT value FROM settings WHERE key='site'").get()?.value||'{}');
-function saveSite(v){db.exec('BEGIN');try{db.prepare('INSERT INTO site_revisions(snapshot) VALUES(?)').run(JSON.stringify(getSite()));db.prepare("INSERT INTO settings VALUES('site',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(v));audit('site configuration changed');db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return v}
+function saveSite(v,action='site configuration changed'){db.exec('BEGIN');try{db.prepare('INSERT INTO site_revisions(snapshot) VALUES(?)').run(JSON.stringify(getSite()));db.prepare("INSERT INTO settings VALUES('site',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(v));audit(action);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return v}
 const isPublicShowcase=x=>x.published===true&&!x.deleted&&(!x.project_id||!!db.prepare("SELECT id FROM records WHERE id=? AND kind='project' AND status='published'").get(x.project_id));
 const publicDownload=id=>db.prepare("SELECT d.path FROM downloads d JOIN records r ON r.id=d.project_id WHERE d.project_id=? AND d.enabled=1 AND r.kind='project' AND r.status='published'").get(id)||null;
 const publicExperience=id=>{const row=db.prepare("SELECT e.value FROM data_experiences e JOIN records r ON r.id=e.project_id WHERE e.project_id=? AND e.published=1 AND r.kind='project' AND r.status='published'").get(id);return row?JSON.parse(row.value):null};
@@ -92,8 +93,38 @@ if(p==='/api/imports'&&m==='GET')return send(r,200,db.prepare('SELECT id,commit_
 if(p==='/api/revisions'&&m==='GET')return send(r,200,db.prepare('SELECT id,created,snapshot FROM revisions WHERE record_id=? ORDER BY id DESC LIMIT 50').all(u.searchParams.get('id')));
 if(p==='/api/restore'&&m==='POST'){const b=await body(q),rev=db.prepare('SELECT * FROM revisions WHERE id=?').get(b.revision);if(!rev)return send(r,404,{error:'Revision unavailable'});const v=JSON.parse(rev.snapshot);db.exec('BEGIN');try{snapshot(v.id);db.prepare('UPDATE records SET brand=?,title=?,body=?,status=?,ar_title=?,en_title=?,ar_body=?,en_body=?,icon=?,catalog=? WHERE id=?').run(v.brand,v.title,v.body,v.status,v.ar_title,v.en_title,v.ar_body,v.en_body,v.icon||'',v.catalog||'',v.id);audit('restored '+v.id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(r,200,{id:v.id});}
 if(p==='/api/convert'&&m==='POST'){const b=await body(q),source=db.prepare("SELECT * FROM records WHERE id=? AND kind='inquiry' AND status='approved'").get(b.id);if(!source)return send(r,400,{error:'Approve inquiry first'});const previous=db.prepare('SELECT project_id FROM conversions WHERE inquiry_id=?').get(source.id);if(previous)return send(r,200,{id:previous.project_id});const id=randomBytes(16).toString('hex');db.exec('BEGIN');try{db.prepare("INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,'project',?,?,?,'draft')").run(id,source.brand,source.title,'');db.prepare('INSERT INTO conversions VALUES(?,?)').run(source.id,id);for(const title of ['Scope / النطاق','Implementation / التنفيذ','Testing / الاختبار'])db.prepare("INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,'task',?,?,?,'draft')").run(randomBytes(16).toString('hex'),source.brand,title+' — '+source.title,'Project: '+id);audit('inquiry converted '+source.id+' '+id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(r,201,{id});}
+if(p==='/api/ai/plan'&&m==='POST'){
+ if(limited(ip+':ai',5))return send(r,429,{error:'Try later'});
+ if(!providerConfigured())return send(r,503,{error:'AI provider not configured'});
+ const b=await body(q),prompt=clean(b.prompt,2000);if(!prompt)return send(r,400,{error:'Empty request'});
+ const current=getSite(),base=JSON.stringify(current);let raw;
+ try{raw=await generate(axisInstruction,JSON.stringify({language:b.language==='ar'?'Arabic':'English',currentSite:axisContext(current),request:prompt}));}catch{return send(r,502,{error:'AI provider unavailable or returned invalid JSON'});}
+ let plan;try{plan=validateAxisPlan(raw,current)}catch{return send(r,422,{error:'AI proposed an invalid or unsupported action'});}
+ if(plan.action==='answer')return send(r,200,plan);
+ if(!sessions.has(token)||sessions.get(token)<=Date.now())return send(r,401,{error:'Login required'});
+ if(plan.action==='site_update'&&JSON.stringify(getSite())!==base)return send(r,409,{error:'Site changed; request a new preview'});
+ for(const [k,d] of drafts)if(d.expires<Date.now()||(d.token===token&&d.plan))drafts.delete(k);
+ const id=randomBytes(16).toString('hex');drafts.set(id,{token,plan,base,expires:Date.now()+600000});
+ return send(r,200,plan.action==='site_update'?{id,action:plan.action,changes:plan.changes}:{id,action:plan.action,record:plan.record});
+}
+if(p==='/api/ai/cancel'&&m==='POST'){
+ const b=await body(q),d=drafts.get(b.id);if(!d?.plan||d.token!==token||d.expires<Date.now())return send(r,404,{error:'Plan unavailable'});
+ drafts.delete(b.id);return send(r,200,{ok:true});
+}
+if(p==='/api/ai/execute'&&m==='POST'){
+ const b=await body(q),d=drafts.get(b.id);if(!d?.plan||d.token!==token||d.expires<Date.now())return send(r,404,{error:'Plan unavailable; request a new preview'});
+ if(b.confirm!==true)return send(r,400,{error:'Explicit confirmation required'});
+ const plan=d.plan;
+ if(plan.action==='site_update'){
+  if(JSON.stringify(getSite())!==d.base){drafts.delete(b.id);return send(r,409,{error:'Site changed; request a new preview'});}
+  const saved=saveSite(plan.next,'axis site configuration changed');drafts.delete(b.id);return send(r,200,{action:plan.action,changes:plan.changes,site:saved});
+ }
+ const x=plan.record,id=randomBytes(16).toString('hex');
+ db.exec('BEGIN');try{db.prepare("INSERT INTO records(id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body) VALUES(?,?,?,?,?,'draft',?,?,?,?)").run(id,x.kind,'personal',x.title,x.body,x.ar_title,x.en_title,x.ar_body,x.en_body);audit('axis record draft created '+id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}
+ drafts.delete(b.id);return send(r,201,{action:plan.action,id,status:'draft'});
+}
 if(p==='/api/ai/draft'&&m==='POST'){if(limited(ip+':ai',5))return send(r,429,{error:'Try later'});if(!providerConfigured())return send(r,503,{error:'AI provider not configured'});const b=await body(q),prompt=clean(b.prompt,2000);if(!prompt)return send(r,400,{error:'Empty request'});const v=await generate('Draft a website content record only. Do not invent facts. Return JSON with kind (article, page, project, service or product), title, body. Language: '+(b.language==='ar'?'Arabic':'English'),prompt);const kind=clean(v.kind,30),title=clean(v.title,150),content=clean(v.body,30000);if(!['article','page','project','service','product'].includes(kind)||!title||!content)return send(r,422,{error:'Invalid draft'});for(const [k,d] of drafts)if(d.expires<Date.now())drafts.delete(k);const id=randomBytes(16).toString('hex');drafts.set(id,{token,kind,title,body:content,expires:Date.now()+600000});audit('ai draft proposed');return send(r,200,{id,kind,title,body:content});}
-if(p==='/api/ai/approve'&&m==='POST'){const b=await body(q),d=drafts.get(b.id);if(!d||d.token!==token||d.expires<Date.now())return send(r,404,{error:'Draft unavailable'});const id=randomBytes(16).toString('hex');db.prepare('INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,?,?,?,?,?)').run(id,d.kind,'personal',d.title,d.body,'draft');drafts.delete(b.id);audit('ai draft approved '+id);return send(r,201,{id});}
+if(p==='/api/ai/approve'&&m==='POST'){const b=await body(q),d=drafts.get(b.id);if(!d||d.plan||d.token!==token||d.expires<Date.now())return send(r,404,{error:'Draft unavailable'});const id=randomBytes(16).toString('hex');db.prepare('INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,?,?,?,?,?)').run(id,d.kind,'personal',d.title,d.body,'draft');drafts.delete(b.id);audit('ai draft approved '+id);return send(r,201,{id});}
 if(p==='/api/logout'&&m==='POST'){sessions.delete(token);r.setHeader('Set-Cookie','session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');return send(r,200,{ok:true});}
 if(p==='/api/records'&&m==='GET')return send(r,200,db.prepare('SELECT * FROM records ORDER BY created DESC').all().map(x=>({...x,catalog:JSON.parse(x.catalog||'{}'),classification:classify(x,publicShowcases()).classification})));
 if(p==='/api/audit'&&m==='GET')return send(r,200,db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT 200').all());
