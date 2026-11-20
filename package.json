@@ -1,6 +1,6 @@
 {
   "name": "ibraxis",
-  "version": "1.3.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env app/server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check app/server.mjs && node --check app/public.js && node --check app/integrations.mjs && node --check app/showcase.mjs && node --check app/zip.mjs && node --check app/design.js && node --check app/identity.js && node --check app/seo.mjs && node --check app/project-navigation.mjs && node --check app/file-store.mjs && node --check app/hybrid-codec.mjs && node --check app/catalog.js && node --check app/experience.mjs && node --check app/data-index.mjs && node --check scripts/build-pages.mjs && node --check app/pages.js && node --check app/axis-agent.mjs && node --check app/publisher.mjs",
-    "build:pages": "node scripts/build-pages.mjs"
+    "check": "node --check app/server.mjs && node --check app/public.js && node --check app/integrations.mjs && node --check app/showcase.mjs && node --check app/zip.mjs && node --check app/design.js && node --check app/identity.js && node --check app/seo.mjs && node --check app/project-navigation.mjs && node --check app/file-store.mjs && node --check app/hybrid-codec.mjs && node --check app/catalog.js && node --check app/experience.mjs && node --check app/data-index.mjs && node --check scripts/build-pages.mjs && node --check app/pages.js && node --check app/axis-agent.mjs && node --check app/publisher.mjs && node --check app/studio.js && node --check app/studio-csv.js && node --check app/studio-runtime.js && node --check scripts/install-runtime.mjs && node --check app/studio-source.mjs && node --check app/workbench.mjs && node --check app/analytics.js && node --check app/connect.js",
+    "build:pages": "node scripts/build-pages.mjs",
+    "setup:runtime": "node scripts/install-runtime.mjs"
   }
 }

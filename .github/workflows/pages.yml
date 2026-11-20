@@ -40,6 +40,13 @@ jobs:
           path: data/pages-input
           persist-credentials: false
       - run: npm run check && npm test
+      - name: Install browser runtime only for approved ONNX experiences
+        env:
+          PAGES_DATA_DIR: data/pages-input/db
+          PAGES_SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          needed="$(node scripts/build-pages.mjs --needs-onnx)"
+          if [ "$needed" = yes ]; then npm run setup:runtime; fi
       - run: npm run build:pages
         env:
           PAGES_DATA_DIR: data/pages-input/db

@@ -1,0 +1,4 @@
+import {spawnSync} from 'node:child_process';
+import {mkdirSync,copyFileSync,existsSync} from 'node:fs';
+const files=['ort.wasm.min.mjs','ort-wasm-simd-threaded.mjs','ort-wasm-simd-threaded.wasm'];
+const r=spawnSync('npm',['install','--no-save','--package-lock=false','--ignore-scripts','onnxruntime-web@1.22.0'],{stdio:'inherit',shell:process.platform==='win32'});if(r.status!==0)process.exit(r.status||1);mkdirSync('app/vendor/ort',{recursive:true});for(const f of files){const src='node_modules/onnxruntime-web/dist/'+f;if(!existsSync(src))throw Error('Missing runtime asset: '+f);copyFileSync(src,'app/vendor/ort/'+f)}for(const f of ['LICENSE','ThirdPartyNotices.txt']){const src='node_modules/onnxruntime-web/'+f;if(existsSync(src))copyFileSync(src,'app/vendor/ort/'+f)}console.log('ONNX Runtime installed locally');
