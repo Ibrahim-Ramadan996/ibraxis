@@ -1,0 +1,62 @@
+name: Publish IBRAXIS on GitHub Pages
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/configure-pages@v5
+        id: pages
+      - name: Check setup
+        env:
+          DATA_REPO: ${{ vars.PAGES_DATA_REPOSITORY }}
+          DATA_TOKEN: ${{ secrets.PAGES_DATA_READ_TOKEN }}
+        run: |
+          test -n "$DATA_REPO" && test -n "$DATA_TOKEN" || { echo 'Set PAGES_DATA_REPOSITORY and PAGES_DATA_READ_TOKEN first'; exit 1; }
+      - name: Verify private data repository
+        env:
+          GH_TOKEN: ${{ secrets.PAGES_DATA_READ_TOKEN }}
+          DATA_REPO: ${{ vars.PAGES_DATA_REPOSITORY }}
+        run: |
+          test "$DATA_REPO" != "$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$DATA_REPO" --jq .private)" = true
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.PAGES_DATA_REPOSITORY }}
+          token: ${{ secrets.PAGES_DATA_READ_TOKEN }}
+          path: data/pages-input
+          persist-credentials: false
+      - run: npm run check && npm test
+      - run: npm run build:pages
+        env:
+          PAGES_DATA_DIR: data/pages-input/db
+          PAGES_SITE_URL: ${{ steps.pages.outputs.base_url }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

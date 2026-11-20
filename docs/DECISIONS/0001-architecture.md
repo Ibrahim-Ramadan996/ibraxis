@@ -1,0 +1,2 @@
+# Proposed ADR 0001
+Use modular monolith, Supabase Auth/Postgres, Cloudflare Pages and Workers, storage/provider adapters. Prioritize static project previews and local Ollama. Initial admin only; client portal later. Benefits: reduced operations and portability. Risks: edge runtime limits, provider quotas, SEO of SPA, external OAuth approvals. Owner approval needed for Phase 01, provider accounts, retention durations, production, paid services and any privileged integrations. No approval assumed.
