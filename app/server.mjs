@@ -1,3 +1,4 @@
+import {validatePublicFeatures} from './site-features.js';
 import {contactSettings,contactFields,requestKinds,budgets,timelines} from './connect.js';
 import {aggregateMetrics} from './analytics.js';
 import {businessReviewInstruction,businessReviewSchema,normalizeBusinessReview,businessReviewError} from './business-review.mjs';
@@ -27,9 +28,14 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomBytes,scryptSync,timingSafeEqual} from 'node:crypto';
 import {readFileSync,mkdirSync,existsSync} from 'node:fs';
 import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {cvSkillDrafts} from './skill-experience.js';
 import {buildProfessionalSetup} from './auto-professional-setup.mjs';
 import {aiManagerInstruction,readManagerContext,validateManagerPlan,managerKinds} from './ai-manager.mjs';
+import {previewIngestion,prepareIngestionPlan} from './manager-upgrade.mjs';
+import {createSiteBuilder} from './ai-kit/site-builder/engine.mjs';
+import {createAiSitePlanner} from './ai-kit/site-builder/ai-planner.mjs';
+import {stageHomeFeature} from './site-home-features.mjs';
 const path=process.env.DB_PATH||'data/ecosystem.sqlite'; mkdirSync(dirname(path),{recursive:true});
 const store=new FileStore(process.env.DATA_DIR||path+'.files'); await store.init();
 const publisher=createPublisher({store});
@@ -60,15 +66,37 @@ const password=process.env.OWNER_PASSWORD; if(!db.prepare('SELECT id FROM users'
 const kinds=['brand','page','project','product','service','article','learning','resource','study','client','inquiry','proposal','agreement','task','milestone','social','agent','experience','notification','skill','achievement','certification','education','career']; const publicKinds=['brand','page','project','product','service','article','experience','skill','achievement','certification','education','career']; const sessions=new Map(), limits=new Map(), drafts=new Map();
 store.checkpoint(db);
 const audit=a=>db.prepare('INSERT INTO audit(action) VALUES(?)').run(a);
+// Owner-approved code editor. Protected backend/config/data files are not writable by AI.
+const sourceEditor=createSiteBuilder({
+ workspaceRoot:fileURLToPath(new URL('../',import.meta.url)),allowedRoots:['app'],
+ assertOwner:c=>{if(!c?.owner)throw Error('Owner login required')},
+ assertCsrf:c=>{if(!c?.csrf)throw Error('Same-origin request required')},
+ audit:e=>audit(`source editor ${e.event} ${e.planId||e.changeId||''}`),
+});
+const externalAI=(process.env.AI_PROVIDER||'ollama')!=='ollama';
+const sourcePlanner=createAiSitePlanner({builder:sourceEditor,externalProvider:externalAI,
+ sourcePaths:['app/index.html','app/home-experience.js','app/pages.js','app/pages.css'],
+ generateChanges:({request,sources,systemLimits})=>generate(
+  'You are an IBRAXIS source improvement planner. Return exactly JSON {"description":"...","changes":[{"action":"update|create","path":"app/...","content":"entire new file contents"}]}. Never request shell, secrets, backend authentication changes, deletion, deployment, or fabricated portfolio facts. Keep existing behavior and bilingual layout. Only change UI files for this proposal. No markdown. '+systemLimits,
+  JSON.stringify({request,sources})),
+});
+function ownerSourceContext(q,token){
+ const origin=q.headers.origin;
+ let originOkay=false;
+ try{originOkay=origin?new URL(origin).host===q.headers.host:q.headers['sec-fetch-site']==='same-origin'}catch{}
+ return {owner:!!token&&sessions.get(token)>Date.now(),csrf:q.headers['x-ibraxis-request']==='1'&&originOkay};
+}
+
 function send(r,s,data){if(r.mutation){try{store.checkpoint(db)}catch(e){console.error('Data checkpoint failed',e.message);s=503;data={error:'Storage unavailable; restart after checking disk'};setImmediate(()=>process.exit(1))}}r.writeHead(s,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});r.end(JSON.stringify(data));}
 async function body(q,max=65536){let b='';for await(const c of q){b+=c;if(b.length>max)throw Error('Body too large');}return JSON.parse(b||'{}');}
 function limited(key,max){let x=limits.get(key)||{n:0,t:Date.now()};if(Date.now()-x.t>60000)x={n:0,t:Date.now()};x.n++;limits.set(key,x);return x.n>max;}
 function clean(v,max){if(typeof v!=='string'||v.length>max)throw Error('Invalid field');return v.trim();}
 const origin=publicOrigin(process.env.PUBLIC_SITE_URL);const template=readFileSync(new URL('index.html',import.meta.url),'utf8');
-const assets=new Map(['public.js','home-experience.js','style.css','design.js','identity.js','catalog.js','studio.js','studio-charts.js','studio-csv.js','studio-runtime.js','analytics.js','connect.js','premium-admin.js','premium-tools.js','profile-editor.js','skill-experience.js'].map(f=>{const data=readFileSync(new URL(f,import.meta.url));return ['/'+f,{data,gzip:gzipSync(data),etag:'"'+createHash('sha256').update(data).digest('hex')+'"',type:f.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'}]}));
+const assets=new Map(['public.js','site-features.js','home-experience.js','style.css','design.js','identity.js','catalog.js','studio.js','studio-charts.js','studio-csv.js','studio-runtime.js','analytics.js','connect.js','premium-admin.js','manager-input-panel.js','manager-site-panel.js','manager-workflows.js','premium-tools.js','profile-editor.js','skill-experience.js'].map(f=>{const data=readFileSync(new URL(f,import.meta.url));return ['/'+f,{data,gzip:gzipSync(data),etag:'"'+createHash('sha256').update(data).digest('hex')+'"',type:f.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'}]}));
 const photoState=()=>parsePortrait(db.prepare('SELECT value FROM settings WHERE key=?').get(PROFILE_KEY)?.value);
 const approvedPhoto=()=>publicPortrait(photoState());
-const siteConfig=()=>{const current=getSite(),site={...current,...design(current)},photo=approvedPhoto();delete site.profile_photo_src;if(photo&&site.portrait_placement!=='off')site.profile_photo_src='/profile-photo.webp?v='+photo.revision;return site};
+const publicFeatures=()=>validatePublicFeatures(JSON.parse(readFileSync(new URL('site-features.json',import.meta.url),'utf8')));
+const siteConfig=()=>{const current=getSite(),site={...current,...design(current),site_features:publicFeatures()},photo=approvedPhoto();delete site.profile_photo_src;if(photo&&site.portrait_placement!=='off')site.profile_photo_src='/profile-photo.webp?v='+photo.revision;return site};
 const publicRows=()=>classifyRows(db.prepare(`SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE status='published' AND kind IN (${publicKinds.map(()=>'?').join(',')}) ORDER BY created DESC,id DESC`).all(...publicKinds));
 function htmlResponse(q,r,status,html){const data=Buffer.from(html);const zip=/\bgzip\b/i.test(q.headers['accept-encoding']||'')&&!/gzip\s*;\s*q=0(?:[;,]|$)/i.test(q.headers['accept-encoding']||'');r.writeHead(status,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Vary':'Accept-Encoding',...(zip?{'Content-Encoding':'gzip'}:{})});return r.end(zip?gzipSync(data):data)}
 const server=http.createServer(async(q,r)=>{r.setHeader('X-Content-Type-Options','nosniff');r.setHeader('X-Frame-Options','DENY');r.setHeader('Referrer-Policy','no-referrer');r.setHeader('Content-Security-Policy',"default-src 'self'; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' data:; frame-src 'self' https://app.powerbi.com https://public.tableau.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");try{const u=new URL(q.url,'http://localhost'),p=u.pathname,m=q.method;r.mutation=m==='POST';const token=(q.headers.cookie||'').match(/(?:^|; )session=([a-f0-9]+)/)?.[1]; const auth=token&&sessions.get(token)>Date.now();const ip=q.socket.remoteAddress; for(const [k,v] of sessions)if(v<Date.now())sessions.delete(k); if(limits.size>2000)for(const [k,v] of limits)if(Date.now()-v.t>60000)limits.delete(k); if(m!=='GET'&&q.headers.origin&&new URL(q.headers.origin).host!==q.headers.host)return send(r,403,{error:'Origin denied'});
@@ -80,8 +108,8 @@ const downloadMatch=p.match(/^\/download\/([a-f0-9]{32})$/);if(m==='GET'&&downlo
 if(m==='GET'&&p==='/profile-photo.webp'){const photo=getSite().portrait_placement==='off'?null:approvedPhoto();if(!photo)return send(r,404,{error:'Photo not published'});r.writeHead(200,{'Content-Type':'image/webp','Content-Length':photo.bytes.length,'Cache-Control':'public, max-age=3600, must-revalidate','ETag':'"'+photo.revision+'"'});return r.end(photo.bytes)}
 if(m==='GET'&&p==='/robots.txt'){r.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});return r.end('User-agent: *\n'+(origin?'Allow: /\nDisallow: /api/\nSitemap: '+origin+'/sitemap.xml\n':'Disallow: /\n'))}
 if(m==='GET'&&p==='/sitemap.xml'){r.writeHead(origin?200:404,{'Content-Type':'application/xml; charset=utf-8','Cache-Control':'no-store'});return r.end(origin?sitemap(origin,siteConfig(),publicProjects(),publicShowcases()):'<?xml version="1.0"?><error>Set PUBLIC_SITE_URL</error>')}
-if(m==='GET'&&['/','/projects','/admin'].includes(p)){const site=siteConfig();if(p==='/admin'||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,200,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,records:p==='/admin'?[]:publicRows(),showcases:p==='/admin'?[]:publicShowcases()}))}
-const detail=p.match(/^\/(?:api\/public\/(record|showcase)|(project|showcase))\/([a-f0-9]{32})$/);if(m==='GET'&&detail){const isShowcase=(detail[1]||detail[2])==='showcase',id=detail[3];const rawItem=isShowcase?publicShowcases().find(x=>x.id===id):db.prepare("SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE id=? AND kind='project' AND status='published'").get(id);const v=rawItem&&!isShowcase?classify(rawItem,publicShowcases()):rawItem;if(p.startsWith('/api/'))return send(r,v?200:404,v?(isShowcase?{...v,navigation:v.project_id?projectNavigation(publicProjects(),v.project_id):null}:{...v,download:!!publicDownload(id),data_experience:publicExperience(id),studio:publicStudioSpec(id),showcases:publicShowcases().filter(x=>x.project_id===id),navigation:projectNavigation(publicProjects(),id)}):{error:'Not found'});const site=siteConfig();if(!v||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,v?200:404,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,item:v,missing:!v,showcases:publicShowcases(),navigation:v?projectNavigation(publicProjects(),isShowcase?v.project_id:id):null}))}
+if(m==='GET'&&['/','/projects','/admin'].includes(p)){const site=siteConfig();if(p==='/admin'||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,200,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,features:publicFeatures(),records:p==='/admin'?[]:publicRows(),showcases:p==='/admin'?[]:publicShowcases()}))}
+const detail=p.match(/^\/(?:api\/public\/(record|showcase)|(project|showcase))\/([a-f0-9]{32})$/);if(m==='GET'&&detail){const isShowcase=(detail[1]||detail[2])==='showcase',id=detail[3];const rawItem=isShowcase?publicShowcases().find(x=>x.id===id):db.prepare("SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE id=? AND kind='project' AND status='published'").get(id);const v=rawItem&&!isShowcase?classify(rawItem,publicShowcases()):rawItem;if(p.startsWith('/api/'))return send(r,v?200:404,v?(isShowcase?{...v,navigation:v.project_id?projectNavigation(publicProjects(),v.project_id):null}:{...v,download:!!publicDownload(id),data_experience:publicExperience(id),studio:publicStudioSpec(id),showcases:publicShowcases().filter(x=>x.project_id===id),navigation:projectNavigation(publicProjects(),id)}):{error:'Not found'});const site=siteConfig();if(!v||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,v?200:404,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,features:publicFeatures(),item:v,missing:!v,showcases:publicShowcases(),navigation:v?projectNavigation(publicProjects(),isShowcase?v.project_id:id):null}))}
 if(p==='/api/login'&&m==='POST'){if(limited(ip+':login',5))return send(r,429,{error:'Try later'});const b=await body(q),a=db.prepare('SELECT * FROM users').get();if(typeof b.password!=='string'||b.password.length>256||!timingSafeEqual(scryptSync(b.password,a.salt,64),Buffer.from(a.hash,'hex')))return send(r,401,{error:'Invalid credentials'});const t=randomBytes(32).toString('hex');sessions.set(t,Date.now()+8*3600000);r.setHeader('Set-Cookie',`session=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.SECURE_COOKIE==='1'?'; Secure':''}`);audit('login');return send(r,200,{ok:true});}
 if(p==='/health'&&m==='GET')return send(r,200,{ok:true});
 if(p==='/api/showcases/public'&&m==='GET')return send(r,200,publicShowcases());
@@ -254,6 +282,44 @@ if(p==='/api/ai/execute'&&m==='POST'){
  const x=plan.record,id=randomBytes(16).toString('hex');
  db.exec('BEGIN');try{db.prepare("INSERT INTO records(id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body) VALUES(?,?,?,?,?,'draft',?,?,?,?)").run(id,x.kind,'personal',x.title,x.body,x.ar_title,x.en_title,x.ar_body,x.en_body);audit('axis record draft created '+id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}
  drafts.delete(b.id);return send(r,201,{action:plan.action,id,status:'draft'});
+}
+
+if(p==='/api/ai/manager/ingest/preview'&&m==='POST'){
+ if(limited(ip+':ingestion',12))return send(r,429,{error:'Too many file previews'});
+ const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
+ const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+ const result=await previewIngestion(b.input,rows);
+ return send(r,200,result);
+}
+if(p==='/api/ai/manager/ingest/prepare'&&m==='POST'){
+ if(limited(ip+':ingestion-plan',6))return send(r,429,{error:'Too many plans'});
+ const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
+ const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+ const {plan,selected}=await prepareIngestionPlan(b.input,b.selectedIds,rows);
+ const id=randomBytes(16).toString('hex');
+ drafts.set(id,{token,manager:true,mode:'approve',plan,expires:Date.now()+600000});
+ audit('manager ingestion plan created');
+ return send(r,200,{id,...plan,selected});
+}
+if(p==='/api/ai/manager/site/capabilities'&&m==='GET')return send(r,200,{...sourceEditor.capabilities,aiConfigured:providerConfigured(),externalAI});
+if(p.startsWith('/api/ai/manager/site/')&&m==='POST'){
+ if(limited(ip+':site-edits',15))return send(r,429,{error:'Try later'});
+ const b=await body(q,65536),ctx=ownerSourceContext(q,token);
+ try{
+  if(p==='/api/ai/manager/site/preview'){
+   const response=b.mode==='ai'?(providerConfigured()?await sourcePlanner.draft(ctx,{request:b.request,consentExternal:b.consentExternal===true}):null)
+    :await stageHomeFeature(sourceEditor,ctx,b);
+   if(!response)return send(r,503,{error:'Configure an AI provider for complex source changes'});
+   return send(r,200,response);
+  }
+  if(p==='/api/ai/manager/site/approve'){
+   if(b.acknowledge!==true)return send(r,400,{error:'Explicit approval required'});
+   return send(r,200,await sourceEditor.approve(ctx,b));
+  }
+  if(p==='/api/ai/manager/site/reject')return send(r,200,await sourceEditor.reject(ctx,b));
+  if(p==='/api/ai/manager/site/undo')return send(r,200,await sourceEditor.undo(ctx,b));
+  return send(r,404,{error:'Not found'});
+ }catch(e){return send(r,e.code==='PLAN_INVALID'||e.code==='STALE_PLAN'?409:400,{error:e.message||'Source edit failed'});}
 }
 if(p==='/api/ai/manager/read'&&m==='POST'){
  const b=await body(q,65536),kind=['all',...managerKinds].includes(b.kind)?b.kind:'all';
