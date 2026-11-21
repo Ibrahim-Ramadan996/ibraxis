@@ -8,7 +8,8 @@ const hasArabic=x=>/[\u0600-\u06ff]/.test(x);
 export function readInput(raw){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Invalid input');
  if(raw.type==='text'){
-  if(typeof raw.text!=='string'||!raw.text.trim()||raw.text.length>100000)throw Error('Text must contain 1–100000 characters');
+  if(typeof raw.text!=='string'||!raw.text.trim())throw Error('لم يصل نص للمعاينة. لو رفعت CV، اختار «فهم الملفات» وتأكد إن اسم الملف ظاهر.');
+  if(raw.text.length>100000)throw Error('النص أطول من الحد المسموح (100000 حرف).');
   return {type:'text',text:raw.text};
  }
  if(raw.type==='file'){

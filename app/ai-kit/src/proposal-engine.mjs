@@ -28,6 +28,19 @@ const SECTION_MARKERS = [
   ['skills', /^(?:skills?|technical\s+skills?|technologies|المهارات|التقنيات)\s*[:：]?\s*$/i],
 ];
 
+// These CV sections cannot be saved through the four allowed record types.
+// Recognizing their headings prevents the preceding education/job block from
+// swallowing their content. Their text stays available as unclassified evidence.
+const UNSUPPORTED_SECTION_MARKERS = [
+  /^(?:(?:selected|personal|professional|academic|featured)\s+)?projects?(?:\s+portfolio)?$/i,
+  /^(?:case\s+studies|portfolio|publications?|research|achievements?|awards?|volunteer(?:ing)?|voluntary\s+work)$/i,
+  /^(?:professional\s+summary|summary|about(?:\s+me)?|profile|objective|contact(?:\s+information)?|references?|languages?|interests?|hobbies)$/i,
+  /^(?:المشاريع|مشروعات|المشروعات|مشاريعي|الاعمال|الأعمال|معرض\s+الأعمال|دراسات\s+الحالة|الملخص|نبذة\s+عني|معلومات\s+الاتصال|اللغات|الاهتمامات|الإنجازات|الانجازات|الأبحاث)$/u,
+];
+function unsupportedHeading(text) {
+  return UNSUPPORTED_SECTION_MARKERS.some(re => re.test(text.trim().replace(/[:：]$/, '').trim()));
+}
+
 function sectionHeading(text) {
   return SECTION_MARKERS.find(([, re]) => re.test(text.trim()))?.[0] ?? null;
 }
@@ -62,7 +75,13 @@ function extractEducation(text) {
   const universityAr = text.match(/(?:جامعة|جامعه)\s+([\p{Script=Arabic}\s]{2,45}?)(?=\s+(?:سنة|عام|في|من|بكالوريوس|ليسانس|قسم|تخصص|خلال|حتي|حتى)|[،,.\n]|$)/u);
   const universityEn = text.match(/\b([A-Z][a-zA-Z\s]{2,45}\bUniversity)\b/);
   const degreeAr = text.match(/(?:بكالوريوس|ليسانس)(?:\s+(?:في|علوم))?\s*[\p{Script=Arabic}\s]{0,65}?(?=\s+(?:من|في|جامعة|سنة|عام|خلال)|[،,.\n]|$)/u);
-  const degreeEn = text.match(/\bBachelor(?:'s|’s)?(?:\s+Degree)?(?:\s+in\s+[A-Za-z ]{2,45})?/i);
+  // Read the degree from its source line only, not the next CV section.
+  // In particular, "Bachelor of Science in Computer Science" must never be
+  // reduced to just "Bachelor". Do not invent a qualification not in the text.
+  const degreeLine = text.split(/\r?\n/).find(line =>
+    /\b(?:Bachelor(?:'s|’s)?|B\.?\s?Sc\.?)\b/i.test(line));
+  const degreePart = degreeLine?.split(/\s+[—–|]\s+|,\s*|\s+\b(?:at|from)\b\s+/i)[0] ?? '';
+  const degreeEn = degreePart.match(/\b(?:Bachelor(?:'s|’s)?(?:\s+(?:of\s+(?:Science|Arts|Engineering|Technology|Business(?:\s+Administration)?)|Degree))?(?:\s+in\s+[A-Za-z][A-Za-z&/ -]{1,75})?|B\.?\s?Sc\.?(?:\s+in\s+[A-Za-z][A-Za-z&/ -]{1,75})?)/i);
   return {
     institution: universityAr ? `جامعة ${universityAr[1].trim()}` : universityEn?.[1]?.trim() ?? null,
     degree: degreeAr?.[0]?.trim() || degreeEn?.[0]?.trim() || null,
@@ -140,7 +159,7 @@ function gapBetween(prev, next) {
 /** Group multi-line CV sections without carrying a category into unrelated prose. */
 function blocksFromSegments(segments) {
   const blocks = [];
-  let current = null, declaredSection = null, lastSheet = null;
+  let current = null, declaredSection = null, lastSheet = null, unsupportedSection = false;
   function flush() { if (current?.segments.length) blocks.push(current); current = null; }
   for (const segment of segments.slice(0, 2000)) {
     const text = String(segment.text ?? '').trim();
@@ -149,10 +168,22 @@ function blocksFromSegments(segments) {
     if (sheet !== lastSheet) {
       flush();
       declaredSection = sheet ? sectionHeading(sheet) || guessCategory(sheet) : null;
+      unsupportedSection = sheet ? unsupportedHeading(sheet) : false;
       lastSheet = sheet;
     }
     const heading = sectionHeading(text);
-    if (heading) { flush(); declaredSection = heading; continue; }
+    if (heading) { flush(); declaredSection = heading; unsupportedSection = false; continue; }
+    if (unsupportedHeading(text)) {
+      flush(); declaredSection = null; unsupportedSection = true;
+      blocks.push({ category: null, segments: [segment] });
+      continue;
+    }
+    // Under an unsupported heading, even lines mentioning "university" or
+    // "internship" are context, not standalone education/career records.
+    if (unsupportedSection) {
+      flush(); blocks.push({ category: null, segments: [segment] });
+      continue;
+    }
     const guessed = guessCategory(text);
     const category = guessed || declaredSection || (current && isYearOnly(text) ? current.category : null);
     if (!category || !CATEGORIES.has(category)) {

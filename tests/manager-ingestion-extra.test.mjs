@@ -116,3 +116,37 @@ test('AI rewriting cannot change extracted facts or authorize saving', async () 
   assert.equal(result.writesPerformed, 0);
   assert.equal(result.requiresOwnerApproval, true);
 });
+
+
+test('input source resolver sends a selected CV as file instead of empty text', async () => {
+ const {resolveIngestionSource} = await import('../app/manager-input-panel.js');
+ const pdf={name:'MyCV.pdf',size:20};
+ assert.deepEqual(resolveIngestionSource({mode:'file',text:'',files:[pdf]}),{mode:'file',input:[pdf]});
+ assert.deepEqual(resolveIngestionSource({mode:'text',text:'  ',files:[pdf]}),{mode:'file',input:[pdf]});
+ assert.deepEqual(resolveIngestionSource({mode:'text',text:'جامعة الفيوم',files:[pdf]}),{mode:'text',input:'جامعة الفيوم'});
+ assert.throws(()=>resolveIngestionSource({mode:'file',text:'',files:[]}),/اختار ملف/);
+ assert.throws(()=>resolveIngestionSource({mode:'text',text:'',files:[]}),/اكتب معلومات/);
+});
+
+// Regression: PDF text often contains multiple visual lines on one page.
+// Preserving lines improves CV section recognition without network or OCR.
+test('PDF text items retain line breaks and ignore empty objects', async () => {
+  const { pdfTextLines } = await import('../app/ai-kit/src/file-extractor.mjs');
+  const lines = pdfTextLines([
+    {str:'Education',transform:[1,0,0,1,10,100]},
+    {str:'Fayoum University',transform:[1,0,0,1,10,80],hasEOL:true},
+    null, {str:'Skills',transform:[1,0,0,1,10,60],hasEOL:true},
+    {str:'Python',transform:[1,0,0,1,10,40]},
+    {str:'SQL',transform:[1,0,0,1,20,40],hasEOL:true},
+  ]);
+  assert.deepEqual(lines,['Education','Fayoum University','Skills','Python SQL']);
+});
+
+test('PDF password and parser errors are diagnosed without reflecting file text', async () => {
+  const { pdfReadError } = await import('../app/ai-kit/src/file-extractor.mjs');
+  assert.equal(pdfReadError({name:'PasswordException',message:'secret'}).code,'PDF_PASSWORD_PROTECTED');
+  assert.equal(pdfReadError({name:'InvalidPDFException',message:'secret'}).code,'PDF_INVALID');
+  assert.equal(pdfReadError({name:'Error',message:'DOMMatrix is not defined'}).code,'PDF_RUNTIME_ERROR');
+  assert.equal(pdfReadError({name:'Error',message:'some private data'}).code,'PDF_READ_FAILED');
+  assert.ok(!pdfReadError({name:'Error',message:'some private data'}).message.includes('private data'));
+});

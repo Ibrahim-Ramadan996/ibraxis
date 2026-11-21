@@ -93,27 +93,95 @@ function csvRows(content, delimiter) {
   return rows;
 }
 
-async function readPdf(content, segments, warnings) {
+/** Convert PDF text items into traceable lines without merging an entire CV page.
+ * pdfjs may mark lines with hasEOL, or change their vertical text coordinate.
+ */
+export function pdfTextLines(items = []) {
+  const lines = [];
+  let line = '', prevY = null;
+  const flush = () => {
+    if (line.trim()) lines.push(line.trim());
+    line = '';
+  };
+  for (const item of items) {
+    if (!item || typeof item.str !== 'string') continue;
+    const raw = item.str.replace(/\0/g, '').trim();
+    const y = Array.isArray(item.transform) && Number.isFinite(item.transform[5])
+      ? item.transform[5] : null;
+    if (raw && line && y !== null && prevY !== null && Math.abs(y - prevY) > 2) flush();
+    if (raw) {
+      line += line ? ` ${raw}` : raw;
+      if (y !== null) prevY = y;
+    }
+    if (item.hasEOL === true) { flush(); prevY = null; }
+  }
+  flush();
+  return lines;
+}
+
+export function pdfReadError(error) {
+  const name = String(error?.name ?? '');
+  const detail = String(error?.message ?? ''); // Never returned to caller or logged.
+  if (/password/i.test(name) || /password|encrypted/i.test(detail)) {
+    return new IngestError('PDF_PASSWORD_PROTECTED',
+      'ملف PDF محمي بكلمة مرور. صدّر نسخة غير محمية ثم جرّب تاني.');
+  }
+  if (/InvalidPDF|FormatError|MissingPDF/i.test(name) || /invalid pdf|corrupt|truncated/i.test(detail)) {
+    return new IngestError('PDF_INVALID',
+      'تعذرت قراءة بنية PDF. افتح الملف وأعد تصديره بصيغة PDF أو DOCX.');
+  }
+  if (/DOMMatrix|OffscreenCanvas|ImageData|canvas/i.test(detail)) {
+    return new IngestError('PDF_RUNTIME_ERROR',
+      'مكتبة PDF لا تعمل بالكامل في بيئة Node الحالية. راجع توافق Node وpdfjs-dist.');
+  }
+  return new IngestError('PDF_READ_FAILED',
+    'تعذرت قراءة صفحات PDF. جرّب إعادة تصدير الملف أو استخدام DOCX.');
+}
+
+async function readPdf(content, segments, warnings, pdfjsLoader = () => import('pdfjs-dist/legacy/build/pdf.mjs')) {
   let pdfjs;
-  try { pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); }
-  catch { throw new IngestError('MISSING_DEPENDENCY', 'Install pdfjs-dist to read PDF files locally'); }
-  const task = pdfjs.getDocument({ data: new Uint8Array(content), useSystemFonts: true, isEvalSupported: false });
-  let pdf;
+  try { pdfjs = await pdfjsLoader(); }
+  catch {
+    throw new IngestError('PDF_READER_UNAVAILABLE',
+      'مكتبة قراءة PDF غير متاحة. نفّذ npm install وأعد تشغيل لوحة الإدارة.');
+  }
+  let task, pdf;
+  let failure = null;
   try {
+    task = pdfjs.getDocument({
+      data: new Uint8Array(content),
+      isEvalSupported: false,
+      enableXfa: false,
+      useSystemFonts: true,
+    });
     pdf = await task.promise;
     for (let i = 1; i <= Math.min(pdf.numPages, MAX_PDF_PAGES); i++) {
       const page = await pdf.getPage(i);
-      const result = await page.getTextContent();
-      const text = result.items.map(item => typeof item.str === 'string' ? item.str : '').join(' ');
-      pushSegment(segments, text, { page: i }, warnings);
-      page.cleanup();
+      try {
+        const result = await page.getTextContent();
+        for (const [index, line] of pdfTextLines(result.items).entries()) {
+          pushSegment(segments, line, { page: i, line: index + 1 }, warnings);
+        }
+      } finally { try { page.cleanup(); } catch { /* Cleanup must not hide the PDF error. */ } }
     }
     if (pdf.numPages > MAX_PDF_PAGES) warnings.push(`تم تحليل أول ${MAX_PDF_PAGES} صفحة فقط.`);
-    if (!segments.length) warnings.push('الـPDF لا يحتوي على نص قابل للاستخراج؛ قد يحتاج OCR محليًا.');
+    if (!segments.length) warnings.push('الـPDF لا يحتوي على نص قابل للاستخراج؛ قد يكون ممسوحًا ضوئيًا ويحتاج OCR.');
+  } catch (e) {
+    failure = pdfReadError(e);
   } finally {
-    if (pdf) await pdf.destroy();
-    else await task.destroy();
+    try {
+      if (pdf) await pdf.destroy();
+      else if (task) await task.destroy();
+    } catch {
+      // Cleanup can fail after text has already been successfully extracted.
+      // Attempt to stop the underlying loading task too; never discard valid
+      // extracted text or mask an actual parsing error on cleanup failure.
+      if (pdf && task) { try { await task.destroy(); } catch { /* best effort */ } }
+      if (!failure) warnings.push(
+        'تم استخراج نص PDF، لكن القارئ أبلغ عن مشكلة عند الإغلاق. راجع المعاينة وأعد تشغيل لوحة الإدارة إذا تكرر التحذير.');
+    }
   }
+  if (failure) throw failure;
 }
 
 async function readDocx(content, segments, warnings) {
@@ -170,7 +238,7 @@ async function readXlsx(content, segments, warnings) {
   if (workbook.worksheets.length > MAX_SHEETS) warnings.push('تم تجاوز بعض أوراق Excel بسبب حدود الأمان.');
 }
 
-export async function extractFile({ filename, bytes, localOcr = null }) {
+export async function extractFile({ filename, bytes, localOcr = null, localPdfLoader = null }) {
   const { content, type, safeName } = requireBytes(bytes, filename);
   const segments = [], warnings = [];
   switch (type) {
@@ -198,7 +266,7 @@ export async function extractFile({ filename, bytes, localOcr = null }) {
       warnings.push('النص المستخرج من صورة يحتاج مراجعة بصرية قبل الاعتماد.');
       break;
     }
-    case '.pdf': await readPdf(content, segments, warnings); break;
+    case '.pdf': await readPdf(content, segments, warnings, localPdfLoader ?? undefined); break;
     case '.docx': await readDocx(content, segments, warnings); break;
     case '.xlsx': await readXlsx(content, segments, warnings); break;
   }

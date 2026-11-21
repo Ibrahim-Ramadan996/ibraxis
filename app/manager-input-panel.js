@@ -8,6 +8,22 @@ const labels = {
 };
 let panelCounter = 0;
 
+// The preview and review actions must use the same explicit source.
+// A selected CV with an empty text box should never be submitted as blank text.
+export function resolveIngestionSource({ mode, text = '', files = [] }) {
+  const selected = Array.from(files ?? []);
+  if (mode === 'file') {
+    if (!selected.length) throw new Error('اختار ملف الـCV أولًا وتأكد إن اسمه ظاهر.');
+    return { mode: 'file', input: selected };
+  }
+  if (mode === 'text') {
+    if (typeof text === 'string' && text.trim()) return { mode: 'text', input: text };
+    if (selected.length) return { mode: 'file', input: selected };
+    throw new Error('اكتب معلومات أو اختار ملفًا من «فهم الملفات» أولًا.');
+  }
+  throw new Error('اختار مصدر البيانات أولًا.');
+}
+
 export function mountIngestionPanel(container, {
   previewText, previewFile, previewFiles = null, onPreparePlan = null,
 } = {}) {
@@ -50,7 +66,8 @@ export function mountIngestionPanel(container, {
     <div class="panel hidden" data-section="file">
       <label for="${token}-file">ارفع CV أو شهادة أو ملف بيانات</label>
       <input id="${token}-file" type="file" accept=".txt,.md,.csv,.tsv,.pdf,.docx,.xlsx,.png,.jpg,.jpeg" ${typeof previewFiles === 'function' ? 'multiple' : ''}>
-      <p class="muted">TXT وCSV وDOCX وExcel. PDF يحتاج مكتبة قراءة محلية، والصور تحتاج OCR محلي. أقصى حجم 4MB.</p>
+      <p class="muted">TXT وCSV وDOCX وExcel وPDF النصي. الصور وملفات PDF الممسوحة ضوئيًا تحتاج OCR محليًا. أقصى حجم 4MB.</p>
+      <p class="muted" data-file-info aria-live="polite">لم يتم اختيار ملف.</p>
     </div>
     <div class="actions"><button type="button" data-action="preview">معاينة المقترحات</button>
       <button type="button" data-action="clear">مسح المعاينة</button></div>
@@ -67,6 +84,7 @@ export function mountIngestionPanel(container, {
   const previewButton = root.querySelector('[data-action=preview]');
   const prepareButton = root.querySelector('[data-action=prepare]');
   const fileInput = root.querySelector('input[type=file]');
+  const fileInfo = root.querySelector('[data-file-info]');
   const textarea = root.querySelector('textarea');
   const clear = () => {
     revision += 1; lastResult = null; inputSnapshot = null; chosen.clear();
@@ -87,7 +105,14 @@ export function mountIngestionPanel(container, {
   };
   root.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => switchMode(button.dataset.mode)));
   textarea.addEventListener('input', clear);
-  fileInput.addEventListener('change', clear);
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files?.length && mode !== 'file') switchMode('file');
+    clear();
+    const selected = [...(fileInput.files ?? [])];
+    fileInfo.textContent = selected.length
+      ? `الملف المختار: ${selected.map(f => f.name).join('، ')} — ${selected.length} ملف`
+      : 'لم يتم اختيار ملف.';
+  });
 
   const updatePrepare = () => {
     prepareButton.classList.toggle('hidden', !(lastResult?.proposals?.length && typeof onPreparePlan === 'function'));
@@ -95,6 +120,15 @@ export function mountIngestionPanel(container, {
     prepareButton.textContent = `إرسال ${chosen.size} عنصر للمراجعة (بدون حفظ)`;
   };
   previewButton.addEventListener('click', async () => {
+    let source;
+    try {
+      source = resolveIngestionSource({ mode, text: textarea.value, files: fileInput.files });
+      if (source.mode !== mode) switchMode(source.mode);
+    } catch (error) {
+      clear();
+      status.textContent = `تعذرت المعاينة: ${error.message}`;
+      return;
+    }
     const runningRevision = ++revision;
     lastResult = null; chosen.clear();
     previewButton.disabled = true;
@@ -102,17 +136,19 @@ export function mountIngestionPanel(container, {
     prepareButton.classList.add('hidden');
     results.replaceChildren(); results.classList.add('hidden');
     try {
-      const input = mode === 'text' ? textarea.value : [...(fileInput.files ?? [])];
-      if (mode === 'file' && !input.length) throw new Error('اختار ملفًا أولًا');
-      if (mode === 'file' && (input.length > 8 || input.some(f => f.size > 4 * 1024 * 1024))) {
+      const input = source.input;
+      if (source.mode === 'file' && (input.length > 8 || input.some(f => f.size > 4 * 1024 * 1024))) {
         throw new Error('تأكد أن كل ملف أقل من 4 ميجابايت، وبحد أقصى 8 ملفات');
       }
-      const result = mode === 'text'
+      const result = source.mode === 'text'
         ? await previewText(input)
         : typeof previewFiles === 'function' ? await previewFiles(input) : await previewFile(input[0]);
       if (runningRevision !== revision) return; // An older asynchronous preview must never overwrite a newer one.
       if (!result || result.mode !== 'preview_only' || !Array.isArray(result.proposals)) {
         throw new Error('استجابة غير متوقعة من خدمة المعاينة');
+      }
+      if (result.source?.kind !== source.mode) {
+        throw new Error('مصدر المعاينة مختلف عن المدخل المختار. حدّث الصفحة وجرّب اختيار الملف مرة أخرى.');
       }
       lastResult = result;
       inputSnapshot = input;
@@ -122,7 +158,8 @@ export function mountIngestionPanel(container, {
       results.append(heading);
       const summary = document.createElement('p');
       summary.className = 'muted';
-      summary.textContent = `المكررات المحتملة: ${result.skippedDuplicates?.length ?? 0} — نصوص غير مصنفة: ${result.unclassified?.length ?? 0}. لم يُحفظ أي شيء.`;
+      const sourceLabel = source.mode === 'file' ? `ملف: ${result.source.filename}` : 'نص مكتوب';
+      summary.textContent = `المصدر: ${sourceLabel} — المكررات المحتملة: ${result.skippedDuplicates?.length ?? 0} — نصوص غير مصنفة: ${result.unclassified?.length ?? 0}. لم يُحفظ أي شيء.`;
       results.append(summary);
       for (const [index, proposal] of result.proposals.entries()) {
         const section = document.createElement('article');

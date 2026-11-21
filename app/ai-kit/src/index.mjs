@@ -12,8 +12,25 @@ export async function previewTextInput({ text, existingRecords = {} }) {
 }
 
 export async function previewFileInput({ filename, bytes, localOcr = null, existingRecords = {} }) {
-  const extracted = await extractFile({ filename, bytes, localOcr });
-  return proposeRecords(extracted, { existingRecords });
+  let extracted;
+  try {
+    extracted = await extractFile({ filename, bytes, localOcr });
+  } catch (error) {
+    if (error instanceof IngestError) throw error;
+    // Office ZIP validation emits a code-bearing Error, not IngestError.
+    if (['FILE_SIGNATURE', 'BAD_OFFICE_ZIP', 'UNSAFE_OFFICE_ZIP'].includes(error?.code)) {
+      throw new IngestError(error.code, 'ملف Word أو Excel غير صالح أو غير آمن للمعالجة.');
+    }
+    throw new IngestError('FILE_EXTRACTION_FAILED',
+      'تعذرت قراءة محتوى الملف. راجع نوعه أو أعد تصديره ثم حاول مرة أخرى.');
+  }
+  try {
+    return proposeRecords(extracted, { existingRecords });
+  } catch (error) {
+    if (error instanceof IngestError) throw error;
+    throw new IngestError('CV_CLASSIFICATION_FAILED',
+      'تم استخراج النص من الملف، لكن تعذر تصنيف بياناته. جرّب ملف TXT أو DOCX.');
+  }
 }
 
 export { IngestError, enrichBilingualPreview };

@@ -33,6 +33,7 @@ import {cvSkillDrafts} from './skill-experience.js';
 import {buildProfessionalSetup} from './auto-professional-setup.mjs';
 import {aiManagerInstruction,readManagerContext,validateManagerPlan,managerKinds} from './ai-manager.mjs';
 import {previewIngestion,prepareIngestionPlan} from './manager-upgrade.mjs';
+import {IngestError} from './ai-kit/src/file-extractor.mjs';
 import {createSiteBuilder} from './ai-kit/site-builder/engine.mjs';
 import {createAiSitePlanner} from './ai-kit/site-builder/ai-planner.mjs';
 import {stageHomeFeature} from './site-home-features.mjs';
@@ -89,6 +90,21 @@ function ownerSourceContext(q,token){
 
 function send(r,s,data){if(r.mutation){try{store.checkpoint(db)}catch(e){console.error('Data checkpoint failed',e.message);s=503;data={error:'Storage unavailable; restart after checking disk'};setImmediate(()=>process.exit(1))}}r.writeHead(s,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});r.end(JSON.stringify(data));}
 async function body(q,max=65536){let b='';for await(const c of q){b+=c;if(b.length>max)throw Error('Body too large');}return JSON.parse(b||'{}');}
+function ingestionError(r,e){
+ if(e instanceof IngestError){
+  const status=e.code==='FILE_TOO_LARGE'?413:e.code==='PDF_READER_UNAVAILABLE'?503:422;
+  return send(r,status,{error:e.message,code:e.code});
+ }
+ if(e?.message==='Body too large')return send(r,413,{error:'حجم الطلب أكبر من الحد المسموح (4 ميجابايت لكل ملف).',code:'UPLOAD_TOO_LARGE'});
+ const safe=new Set(['Invalid input','Invalid filename','Invalid file data',
+   'File exceeds limit or has invalid encoding','Text must contain 1–100000 characters',
+   'لم يصل نص للمعاينة. لو رفعت CV، اختار «فهم الملفات» وتأكد إن اسم الملف ظاهر.',
+   'النص أطول من الحد المسموح (100000 حرف).',
+   'Supported sources: text, file']);
+ if(safe.has(e?.message))return send(r,400,{error:e.message,code:'BAD_INPUT'});
+ // Never reflect unrecognized parser errors or source excerpts to the browser.
+ return send(r,422,{error:'تعذرت المعاينة بسبب خطأ داخلي غير متوقع. راجع الخادم أو جرّب ملفًا آخر.',code:'INGEST_INTERNAL_ERROR'});
+}
 function limited(key,max){let x=limits.get(key)||{n:0,t:Date.now()};if(Date.now()-x.t>60000)x={n:0,t:Date.now()};x.n++;limits.set(key,x);return x.n>max;}
 function clean(v,max){if(typeof v!=='string'||v.length>max)throw Error('Invalid field');return v.trim();}
 const origin=publicOrigin(process.env.PUBLIC_SITE_URL);const template=readFileSync(new URL('index.html',import.meta.url),'utf8');
@@ -286,20 +302,24 @@ if(p==='/api/ai/execute'&&m==='POST'){
 
 if(p==='/api/ai/manager/ingest/preview'&&m==='POST'){
  if(limited(ip+':ingestion',12))return send(r,429,{error:'Too many file previews'});
- const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
- const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
- const result=await previewIngestion(b.input,rows);
- return send(r,200,result);
+ try {
+  const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
+  const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+  const result=await previewIngestion(b.input,rows);
+  return send(r,200,result);
+ } catch(e) { return ingestionError(r,e); }
 }
 if(p==='/api/ai/manager/ingest/prepare'&&m==='POST'){
  if(limited(ip+':ingestion-plan',6))return send(r,429,{error:'Too many plans'});
- const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
- const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
- const {plan,selected}=await prepareIngestionPlan(b.input,b.selectedIds,rows);
- const id=randomBytes(16).toString('hex');
- drafts.set(id,{token,manager:true,mode:'approve',plan,expires:Date.now()+600000});
- audit('manager ingestion plan created');
- return send(r,200,{id,...plan,selected});
+ try {
+  const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
+  const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+  const {plan,selected}=await prepareIngestionPlan(b.input,b.selectedIds,rows);
+  const id=randomBytes(16).toString('hex');
+  drafts.set(id,{token,manager:true,mode:'approve',plan,expires:Date.now()+600000});
+  audit('manager ingestion plan created');
+  return send(r,200,{id,...plan,selected});
+ } catch(e) { return ingestionError(r,e); }
 }
 if(p==='/api/ai/manager/site/capabilities'&&m==='GET')return send(r,200,{...sourceEditor.capabilities,aiConfigured:providerConfigured(),externalAI});
 if(p.startsWith('/api/ai/manager/site/')&&m==='POST'){
