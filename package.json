@@ -1,6 +1,6 @@
 {
   "name": "ibraxis",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env app/server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check app/server.mjs && node --check app/public.js && node --check app/integrations.mjs && node --check app/showcase.mjs && node --check app/zip.mjs && node --check app/design.js && node --check app/identity.js && node --check app/seo.mjs && node --check app/project-navigation.mjs && node --check app/file-store.mjs && node --check app/hybrid-codec.mjs && node --check app/catalog.js && node --check app/experience.mjs && node --check app/data-index.mjs && node --check scripts/build-pages.mjs && node --check app/pages.js && node --check app/axis-agent.mjs && node --check app/publisher.mjs && node --check app/studio.js && node --check app/studio-csv.js && node --check app/studio-runtime.js && node --check scripts/install-runtime.mjs && node --check app/studio-source.mjs && node --check app/workbench.mjs && node --check app/analytics.js && node --check app/connect.js && node --check app/home-experience.js && node --check app/studio-charts.js && node --check app/business-review.mjs && node --check app/premium-tools.js && node --check app/premium-admin.js",
+    "check": "node --check app/server.mjs && node --check app/public.js && node --check app/integrations.mjs && node --check app/showcase.mjs && node --check app/zip.mjs && node --check app/design.js && node --check app/identity.js && node --check app/seo.mjs && node --check app/project-navigation.mjs && node --check app/file-store.mjs && node --check app/hybrid-codec.mjs && node --check app/catalog.js && node --check app/experience.mjs && node --check app/data-index.mjs && node --check scripts/build-pages.mjs && node --check app/pages.js && node --check app/axis-agent.mjs && node --check app/publisher.mjs && node --check app/studio.js && node --check app/studio-csv.js && node --check app/studio-runtime.js && node --check scripts/install-runtime.mjs && node --check app/studio-source.mjs && node --check app/workbench.mjs && node --check app/analytics.js && node --check app/connect.js && node --check app/home-experience.js && node --check app/studio-charts.js && node --check app/business-review.mjs && node --check app/premium-tools.js && node --check app/premium-admin.js && node --check app/profile-photo.mjs && node --check app/profile-editor.js && node --check app/skill-experience.js && node --check app/auto-professional-setup.mjs && node --check app/ai-manager.mjs",
     "build:pages": "node scripts/build-pages.mjs",
     "setup:runtime": "node scripts/install-runtime.mjs"
   }
