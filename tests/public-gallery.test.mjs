@@ -7,10 +7,10 @@ import {join} from 'node:path';
 import {validateIcon,pickIcon,iconSvg} from '../app/identity.js';
 
 test('identity icon selection is safe and category-aware',()=>{
- assert.equal(pickIcon('Python','skill'),'code');
- assert.equal(pickIcon('Power BI','skill'),'data');
- assert.equal(pickIcon('SQL','skill'),'database');
- assert.equal(pickIcon('تعلم الآلة','skill'),'ai');
+ assert.equal(pickIcon('Python','skill'),'python');
+ assert.equal(pickIcon('Power BI','skill'),'powerbi');
+ assert.equal(pickIcon('SQL','skill'),'sql');
+ assert.equal(pickIcon('تعلم الآلة','skill'),'machinelearning');
  assert.equal(pickIcon('Some certificate','certification'),'award');
  assert.equal(validateIcon('star'),'star');
  assert.throws(()=>validateIcon('<script>alert(1)</script>'));

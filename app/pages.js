@@ -1,3 +1,4 @@
+import {bindSkillFilters} from './skill-experience.js';
 import {bindConnect} from './connect.js';
 import {mountStudio} from './studio.js';
 import {design,colors} from './design.js';import {matches} from './catalog.js';
@@ -6,3 +7,5 @@ const ar=document.documentElement.lang==='ar',tr=(a,b)=>ar?b:a,base=new URL('.',
 for(const el of document.querySelectorAll('[data-studio]')){try{mountStudio(el,JSON.parse(el.dataset.studio),ar);}catch{el.textContent=tr('Experience unavailable','التجربة غير متاحة');}}
 
 bindConnect(document,data.site,ar);
+
+bindSkillFilters(document);

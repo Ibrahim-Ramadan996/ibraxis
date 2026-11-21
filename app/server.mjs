@@ -1,3 +1,4 @@
+import {validatePublicFeatures} from './site-features.js';
 import {contactSettings,contactFields,requestKinds,budgets,timelines} from './connect.js';
 import {aggregateMetrics} from './analytics.js';
 import {businessReviewInstruction,businessReviewSchema,normalizeBusinessReview,businessReviewError} from './business-review.mjs';
@@ -18,6 +19,7 @@ import {gzipSync} from 'node:zlib';
 import {projectNavigation} from './project-navigation.mjs';
 import {validateIcon} from './identity.js';
 import {design} from './design.js';
+import {PROFILE_KEY,MAX_PROFILE_BYTES,parsePortrait,publicPortrait,validatePortraitData} from './profile-photo.mjs';
 import {readZip} from './zip.mjs';
 import {validateShowcase,fetchActivity} from './showcase.mjs';
 import {generate,providerConfigured,validateFiles,syncGithub,importLimit} from './integrations.mjs';
@@ -26,6 +28,15 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomBytes,scryptSync,timingSafeEqual} from 'node:crypto';
 import {readFileSync,mkdirSync,existsSync} from 'node:fs';
 import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {cvSkillDrafts} from './skill-experience.js';
+import {buildProfessionalSetup} from './auto-professional-setup.mjs';
+import {aiManagerInstruction,readManagerContext,validateManagerPlan,managerKinds} from './ai-manager.mjs';
+import {previewIngestion,prepareIngestionPlan} from './manager-upgrade.mjs';
+import {IngestError} from './ai-kit/src/file-extractor.mjs';
+import {createSiteBuilder} from './ai-kit/site-builder/engine.mjs';
+import {createAiSitePlanner} from './ai-kit/site-builder/ai-planner.mjs';
+import {stageHomeFeature} from './site-home-features.mjs';
 const path=process.env.DB_PATH||'data/ecosystem.sqlite'; mkdirSync(dirname(path),{recursive:true});
 const store=new FileStore(process.env.DATA_DIR||path+'.files'); await store.init();
 const publisher=createPublisher({store});
@@ -56,13 +67,52 @@ const password=process.env.OWNER_PASSWORD; if(!db.prepare('SELECT id FROM users'
 const kinds=['brand','page','project','product','service','article','learning','resource','study','client','inquiry','proposal','agreement','task','milestone','social','agent','experience','notification','skill','achievement','certification','education','career']; const publicKinds=['brand','page','project','product','service','article','experience','skill','achievement','certification','education','career']; const sessions=new Map(), limits=new Map(), drafts=new Map();
 store.checkpoint(db);
 const audit=a=>db.prepare('INSERT INTO audit(action) VALUES(?)').run(a);
+// Owner-approved code editor. Protected backend/config/data files are not writable by AI.
+const sourceEditor=createSiteBuilder({
+ workspaceRoot:fileURLToPath(new URL('../',import.meta.url)),allowedRoots:['app'],
+ assertOwner:c=>{if(!c?.owner)throw Error('Owner login required')},
+ assertCsrf:c=>{if(!c?.csrf)throw Error('Same-origin request required')},
+ audit:e=>audit(`source editor ${e.event} ${e.planId||e.changeId||''}`),
+});
+const externalAI=(process.env.AI_PROVIDER||'ollama')!=='ollama';
+const sourcePlanner=createAiSitePlanner({builder:sourceEditor,externalProvider:externalAI,
+ sourcePaths:['app/index.html','app/home-experience.js','app/pages.js','app/pages.css'],
+ generateChanges:({request,sources,systemLimits})=>generate(
+  'You are an IBRAXIS source improvement planner. Return exactly JSON {"description":"...","changes":[{"action":"update|create","path":"app/...","content":"entire new file contents"}]}. Never request shell, secrets, backend authentication changes, deletion, deployment, or fabricated portfolio facts. Keep existing behavior and bilingual layout. Only change UI files for this proposal. No markdown. '+systemLimits,
+  JSON.stringify({request,sources})),
+});
+function ownerSourceContext(q,token){
+ const origin=q.headers.origin;
+ let originOkay=false;
+ try{originOkay=origin?new URL(origin).host===q.headers.host:q.headers['sec-fetch-site']==='same-origin'}catch{}
+ return {owner:!!token&&sessions.get(token)>Date.now(),csrf:q.headers['x-ibraxis-request']==='1'&&originOkay};
+}
+
 function send(r,s,data){if(r.mutation){try{store.checkpoint(db)}catch(e){console.error('Data checkpoint failed',e.message);s=503;data={error:'Storage unavailable; restart after checking disk'};setImmediate(()=>process.exit(1))}}r.writeHead(s,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});r.end(JSON.stringify(data));}
 async function body(q,max=65536){let b='';for await(const c of q){b+=c;if(b.length>max)throw Error('Body too large');}return JSON.parse(b||'{}');}
+function ingestionError(r,e){
+ if(e instanceof IngestError){
+  const status=e.code==='FILE_TOO_LARGE'?413:e.code==='PDF_READER_UNAVAILABLE'?503:422;
+  return send(r,status,{error:e.message,code:e.code});
+ }
+ if(e?.message==='Body too large')return send(r,413,{error:'حجم الطلب أكبر من الحد المسموح (4 ميجابايت لكل ملف).',code:'UPLOAD_TOO_LARGE'});
+ const safe=new Set(['Invalid input','Invalid filename','Invalid file data',
+   'File exceeds limit or has invalid encoding','Text must contain 1–100000 characters',
+   'لم يصل نص للمعاينة. لو رفعت CV، اختار «فهم الملفات» وتأكد إن اسم الملف ظاهر.',
+   'النص أطول من الحد المسموح (100000 حرف).',
+   'Supported sources: text, file']);
+ if(safe.has(e?.message))return send(r,400,{error:e.message,code:'BAD_INPUT'});
+ // Never reflect unrecognized parser errors or source excerpts to the browser.
+ return send(r,422,{error:'تعذرت المعاينة بسبب خطأ داخلي غير متوقع. راجع الخادم أو جرّب ملفًا آخر.',code:'INGEST_INTERNAL_ERROR'});
+}
 function limited(key,max){let x=limits.get(key)||{n:0,t:Date.now()};if(Date.now()-x.t>60000)x={n:0,t:Date.now()};x.n++;limits.set(key,x);return x.n>max;}
 function clean(v,max){if(typeof v!=='string'||v.length>max)throw Error('Invalid field');return v.trim();}
 const origin=publicOrigin(process.env.PUBLIC_SITE_URL);const template=readFileSync(new URL('index.html',import.meta.url),'utf8');
-const assets=new Map(['public.js','home-experience.js','style.css','design.js','identity.js','catalog.js','studio.js','studio-charts.js','studio-csv.js','studio-runtime.js','analytics.js','connect.js','premium-admin.js','premium-tools.js'].map(f=>{const data=readFileSync(new URL(f,import.meta.url));return ['/'+f,{data,gzip:gzipSync(data),etag:'"'+createHash('sha256').update(data).digest('hex')+'"',type:f.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'}]}));
-const siteConfig=()=>({...getSite(),...design(getSite())});
+const assets=new Map(['public.js','site-features.js','home-experience.js','style.css','design.js','identity.js','catalog.js','studio.js','studio-charts.js','studio-csv.js','studio-runtime.js','analytics.js','connect.js','premium-admin.js','manager-input-panel.js','manager-site-panel.js','manager-workflows.js','premium-tools.js','profile-editor.js','skill-experience.js'].map(f=>{const data=readFileSync(new URL(f,import.meta.url));return ['/'+f,{data,gzip:gzipSync(data),etag:'"'+createHash('sha256').update(data).digest('hex')+'"',type:f.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'}]}));
+const photoState=()=>parsePortrait(db.prepare('SELECT value FROM settings WHERE key=?').get(PROFILE_KEY)?.value);
+const approvedPhoto=()=>publicPortrait(photoState());
+const publicFeatures=()=>validatePublicFeatures(JSON.parse(readFileSync(new URL('site-features.json',import.meta.url),'utf8')));
+const siteConfig=()=>{const current=getSite(),site={...current,...design(current),site_features:publicFeatures()},photo=approvedPhoto();delete site.profile_photo_src;if(photo&&site.portrait_placement!=='off')site.profile_photo_src='/profile-photo.webp?v='+photo.revision;return site};
 const publicRows=()=>classifyRows(db.prepare(`SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE status='published' AND kind IN (${publicKinds.map(()=>'?').join(',')}) ORDER BY created DESC,id DESC`).all(...publicKinds));
 function htmlResponse(q,r,status,html){const data=Buffer.from(html);const zip=/\bgzip\b/i.test(q.headers['accept-encoding']||'')&&!/gzip\s*;\s*q=0(?:[;,]|$)/i.test(q.headers['accept-encoding']||'');r.writeHead(status,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Vary':'Accept-Encoding',...(zip?{'Content-Encoding':'gzip'}:{})});return r.end(zip?gzipSync(data):data)}
 const server=http.createServer(async(q,r)=>{r.setHeader('X-Content-Type-Options','nosniff');r.setHeader('X-Frame-Options','DENY');r.setHeader('Referrer-Policy','no-referrer');r.setHeader('Content-Security-Policy',"default-src 'self'; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' data:; frame-src 'self' https://app.powerbi.com https://public.tableau.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");try{const u=new URL(q.url,'http://localhost'),p=u.pathname,m=q.method;r.mutation=m==='POST';const token=(q.headers.cookie||'').match(/(?:^|; )session=([a-f0-9]+)/)?.[1]; const auth=token&&sessions.get(token)>Date.now();const ip=q.socket.remoteAddress; for(const [k,v] of sessions)if(v<Date.now())sessions.delete(k); if(limits.size>2000)for(const [k,v] of limits)if(Date.now()-v.t>60000)limits.delete(k); if(m!=='GET'&&q.headers.origin&&new URL(q.headers.origin).host!==q.headers.host)return send(r,403,{error:'Origin denied'});
@@ -71,17 +121,45 @@ if(m==='GET'&&p==='/studio-sandbox.html'){r.removeHeader('X-Frame-Options');r.se
 if(m==='GET'&&/^\/vendor\/ort\/(?:ort\.wasm\.min\.mjs|ort-wasm-simd-threaded\.(?:mjs|wasm))$/.test(p)){const f=new URL('.'+p,import.meta.url);if(!existsSync(f))return send(r,404,{error:'Install ONNX runtime first'});r.writeHead(200,{'Content-Type':p.endsWith('.wasm')?'application/wasm':'text/javascript; charset=utf-8','Cache-Control':'public, max-age=3600'});return r.end(readFileSync(f))}
 if(m==='GET'&&assets.has(p)){const a=assets.get(p);const zip=/\bgzip\b/i.test(q.headers['accept-encoding']||'')&&!/gzip\s*;\s*q=0(?:[;,]|$)/i.test(q.headers['accept-encoding']||'');const etag=zip?'W/'+a.etag:a.etag;const headers={'Content-Type':a.type,'Cache-Control':'public, max-age=3600, must-revalidate','ETag':etag,'Vary':'Accept-Encoding'};if(q.headers['if-none-match']===etag){r.writeHead(304,headers);return r.end()}r.writeHead(200,{...headers,...(zip?{'Content-Encoding':'gzip'}:{})});return r.end(zip?a.gzip:a.data)}
 const downloadMatch=p.match(/^\/download\/([a-f0-9]{32})$/);if(m==='GET'&&downloadMatch){const id=downloadMatch[1],d=publicDownload(id);if(!d)return send(r,404,{error:'Not found'});if(limited(ip+':download',10))return send(r,429,{error:'Try later'});const row=db.prepare('SELECT files FROM imports WHERE id=?').get(id),f=row&&JSON.parse(row.files).find(x=>x.path===d.path);if(!f)return send(r,404,{error:'Not found'});const bytes=Buffer.from(f.data,'base64'),name=f.path.split('/').at(-1);r.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':"attachment; filename=\"download\"; filename*=UTF-8''"+encodeURIComponent(name).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16)),'Content-Length':bytes.length,'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'});return r.end(bytes)}
+if(m==='GET'&&p==='/profile-photo.webp'){const photo=getSite().portrait_placement==='off'?null:approvedPhoto();if(!photo)return send(r,404,{error:'Photo not published'});r.writeHead(200,{'Content-Type':'image/webp','Content-Length':photo.bytes.length,'Cache-Control':'public, max-age=3600, must-revalidate','ETag':'"'+photo.revision+'"'});return r.end(photo.bytes)}
 if(m==='GET'&&p==='/robots.txt'){r.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});return r.end('User-agent: *\n'+(origin?'Allow: /\nDisallow: /api/\nSitemap: '+origin+'/sitemap.xml\n':'Disallow: /\n'))}
 if(m==='GET'&&p==='/sitemap.xml'){r.writeHead(origin?200:404,{'Content-Type':'application/xml; charset=utf-8','Cache-Control':'no-store'});return r.end(origin?sitemap(origin,siteConfig(),publicProjects(),publicShowcases()):'<?xml version="1.0"?><error>Set PUBLIC_SITE_URL</error>')}
-if(m==='GET'&&['/','/projects','/admin'].includes(p)){const site=siteConfig();if(p==='/admin'||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,200,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,records:p==='/admin'?[]:publicRows(),showcases:p==='/admin'?[]:publicShowcases()}))}
-const detail=p.match(/^\/(?:api\/public\/(record|showcase)|(project|showcase))\/([a-f0-9]{32})$/);if(m==='GET'&&detail){const isShowcase=(detail[1]||detail[2])==='showcase',id=detail[3];const rawItem=isShowcase?publicShowcases().find(x=>x.id===id):db.prepare("SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE id=? AND kind='project' AND status='published'").get(id);const v=rawItem&&!isShowcase?classify(rawItem,publicShowcases()):rawItem;if(p.startsWith('/api/'))return send(r,v?200:404,v?(isShowcase?{...v,navigation:v.project_id?projectNavigation(publicProjects(),v.project_id):null}:{...v,download:!!publicDownload(id),data_experience:publicExperience(id),studio:publicStudioSpec(id),showcases:publicShowcases().filter(x=>x.project_id===id),navigation:projectNavigation(publicProjects(),id)}):{error:'Not found'});const site=siteConfig();if(!v||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,v?200:404,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,item:v,missing:!v,showcases:publicShowcases(),navigation:v?projectNavigation(publicProjects(),isShowcase?v.project_id:id):null}))}
+if(m==='GET'&&['/','/projects','/admin'].includes(p)){const site=siteConfig();if(p==='/admin'||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,200,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,features:publicFeatures(),records:p==='/admin'?[]:publicRows(),showcases:p==='/admin'?[]:publicShowcases()}))}
+const detail=p.match(/^\/(?:api\/public\/(record|showcase)|(project|showcase))\/([a-f0-9]{32})$/);if(m==='GET'&&detail){const isShowcase=(detail[1]||detail[2])==='showcase',id=detail[3];const rawItem=isShowcase?publicShowcases().find(x=>x.id===id):db.prepare("SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE id=? AND kind='project' AND status='published'").get(id);const v=rawItem&&!isShowcase?classify(rawItem,publicShowcases()):rawItem;if(p.startsWith('/api/'))return send(r,v?200:404,v?(isShowcase?{...v,navigation:v.project_id?projectNavigation(publicProjects(),v.project_id):null}:{...v,download:!!publicDownload(id),data_experience:publicExperience(id),studio:publicStudioSpec(id),showcases:publicShowcases().filter(x=>x.project_id===id),navigation:projectNavigation(publicProjects(),id)}):{error:'Not found'});const site=siteConfig();if(!v||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,v?200:404,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,features:publicFeatures(),item:v,missing:!v,showcases:publicShowcases(),navigation:v?projectNavigation(publicProjects(),isShowcase?v.project_id:id):null}))}
 if(p==='/api/login'&&m==='POST'){if(limited(ip+':login',5))return send(r,429,{error:'Try later'});const b=await body(q),a=db.prepare('SELECT * FROM users').get();if(typeof b.password!=='string'||b.password.length>256||!timingSafeEqual(scryptSync(b.password,a.salt,64),Buffer.from(a.hash,'hex')))return send(r,401,{error:'Invalid credentials'});const t=randomBytes(32).toString('hex');sessions.set(t,Date.now()+8*3600000);r.setHeader('Set-Cookie',`session=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.SECURE_COOKIE==='1'?'; Secure':''}`);audit('login');return send(r,200,{ok:true});}
 if(p==='/health'&&m==='GET')return send(r,200,{ok:true});
 if(p==='/api/showcases/public'&&m==='GET')return send(r,200,publicShowcases());
-if(p==='/api/site'&&m==='GET')return send(r,200,JSON.parse(db.prepare("SELECT value FROM settings WHERE key='site'").get()?.value||'{}'));
+if(p==='/api/site'&&m==='GET')return send(r,200,siteConfig());
 if(p==='/api/public'&&m==='GET'){const b=u.searchParams.get('brand');return send(r,200,classifyRows(db.prepare(`SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE (? IS NULL OR brand=?) AND status='published' AND kind IN (${publicKinds.map(()=>'?').join(',')}) ORDER BY created DESC,id DESC`).all(b,b,...publicKinds)));}
 if(p==='/api/inquiry'&&m==='POST'){if(limited(ip+':inquiry',5))return send(r,429,{error:'Try later'});const b=await body(q),brand=clean(b.brand,30),title=clean(b.title,150),message=clean(b.body,5000),email=clean(b.email,200);if(!['personal','technology'].includes(brand)||!title||!message||!/^\S+@\S+\.\S+$/.test(email)||b.website)return send(r,400,{error:'Invalid inquiry'});if(b.kind!==undefined&&(!requestKinds.includes(b.kind)||!budgets.includes(b.budget)||!timelines.includes(b.timeline)||b.consent!==true||!clean(b.name,100)))return send(r,400,{error:'Invalid project brief or consent'});const id=randomBytes(16).toString('hex');db.prepare('INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,?,?,?,?,?)').run(id,'inquiry',brand,title,JSON.stringify({email,message,...(b.kind!==undefined?{name:clean(b.name,100),kind:b.kind,budget:b.budget,timeline:b.timeline,consent:true}:{})}),'new');return send(r,201,{id});}
 if(!p.startsWith('/api/'))return send(r,404,{error:'Not found'});if(!auth)return send(r,401,{error:'Login required'});
+if(p==='/api/profile-photo'&&m==='GET'){
+ const state=photoState();return send(r,200,{draft:state.draft?'data:image/webp;base64,'+state.draft:null,approved:!!approvedPhoto(),hasDraft:!!state.draft,appearance:design(getSite())});
+}
+if(p==='/api/profile-photo'&&m==='POST'){
+ if(limited(ip+':profile-photo',10))return send(r,429,{error:'Too many photo changes; try again later'});
+ if(!/^application\/json(?:;|$)/i.test(q.headers['content-type']||''))return send(r,415,{error:'JSON required'});
+ const b=await body(q,Math.ceil(MAX_PROFILE_BYTES/3)*4+2048),state=photoState();
+ if(b.action==='upload'){
+  const {data}=validatePortraitData(b.data);state.draft=data;
+ }else if(b.action==='approve'){
+  if(!state.draft||b.confirm!==true)return send(r,400,{error:'Preview and confirm a photo first'});
+  state.approved=state.draft;
+ }else if(b.action==='hide'){
+  if(b.confirm!==true)return send(r,400,{error:'Confirmation required'});
+  state.approved='';
+ }else if(b.action==='remove'){
+  if(b.confirm!==true)return send(r,400,{error:'Confirmation required'});
+  state.draft='';state.approved='';
+ }else if(b.action==='appearance'){
+  const keys=['portrait_style','portrait_size','portrait_placement','portrait_focus_x','portrait_focus_y'];
+  if(Object.keys(b).some(k=>!['action',...keys].includes(k)))return send(r,400,{error:'Invalid appearance field'});
+  const current=getSite();const v={...current};for(const k of keys)if(k in b)v[k]=b[k];
+  return send(r,200,saveSite({...v,...design(v)},'profile portrait appearance changed'));
+ }else return send(r,400,{error:'Unknown photo action'});
+ db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(PROFILE_KEY,JSON.stringify(state));
+ audit('profile photo '+b.action);return send(r,200,{ok:true,approved:!!state.approved,hasDraft:!!state.draft});
+}
 if(p==='/api/diagnostics'&&m==='GET')return send(r,200,{ai:{configured:providerConfigured(),provider:process.env.AI_PROVIDER||'ollama',model:process.env.AI_MODEL||process.env.OLLAMA_MODEL||null},storage:{configured:!!store.status.configured},publishing:{configured:!!process.env.IBRAXIS_PUBLISH_TOKEN}});
 if(p==='/api/diagnostics'&&m==='POST'){const b=await body(q);if(b.action!=='test')return send(r,400,{error:'Invalid diagnostics action'});if(limited(ip+':ai-diagnostic',2))return send(r,429,{error:'Try later'});if(!providerConfigured())return send(r,503,{error:'AI provider not configured'});try{const result=await generate('Return JSON with a single property ok of boolean true. Do not include explanations or any other fields.','Connectivity test. No private data.',{responseSchema:{type:'OBJECT',properties:{ok:{type:'BOOLEAN'}},required:['ok']}});if(result?.ok!==true)return send(r,502,{error:'AI returned an unexpected test response',reason:'response-format'});return send(r,200,{ok:true})}catch(e){const problem=businessReviewError(e,'ar');console.warn('AI diagnostics failed:',problem.reason);return send(r,502,problem)}}
 if(p==='/api/business/analyze'&&m==='POST'){const b=await body(q);if(b.share!==true||typeof b.context!=='string'||!b.context.trim()||b.context.length>6000)return send(r,400,{error:'Review context and confirm sharing'});if(limited(ip+':business-ai',5))return send(r,429,{error:'Try later'});if(!providerConfigured())return send(r,503,{error:'AI provider not configured'});try{const raw=await generate(businessReviewInstruction,JSON.stringify({language:b.language==='ar'?'Arabic':'English',brief:b.context}),{responseSchema:businessReviewSchema});return send(r,200,normalizeBusinessReview(raw))}catch(e){const problem=businessReviewError(e,b.language);console.warn('Business review failed:',problem.reason);return send(r,502,problem)}}
@@ -139,6 +217,31 @@ if(p==='/api/showcases'&&m==='POST'){const b=await body(q),v=validateShowcase(b)
 if(p==='/api/site'&&m==='POST'){const b=await body(q),v={...getSite()};for(const k of ['name','headline_ar','headline_en','subline_ar','subline_en','bio_ar','bio_en','role_ar','role_en','vision_ar','vision_en','journey_ar','journey_en','github','linkedin','welcome_ar','welcome_en','seo_title_ar','seo_title_en','seo_description_ar','seo_description_en'])v[k]=clean(b[k]??v[k]??'',k==='name'?80:k.startsWith('seo_title')?120:k.startsWith('seo_description')?320:5000);for(const k of ['github','linkedin'])if(v[k]&&(!/^https:\/\//i.test(v[k])||!['github.com','www.linkedin.com','linkedin.com'].includes(new URL(v[k]).hostname)))return send(r,400,{error:'Invalid profile link'});if(b.welcome_mode!==undefined){if(!['once','always','off'].includes(b.welcome_mode))throw Error('Invalid welcome mode');v.welcome_mode=b.welcome_mode}Object.assign(v,contactSettings({...v,...Object.fromEntries(contactFields.filter(k=>k in b).map(k=>[k,b[k]]))},true),design({...v,...b}));return send(r,200,saveSite(v));}
 if(p==='/api/site/history'&&m==='GET')return send(r,200,db.prepare('SELECT id,created,snapshot FROM site_revisions ORDER BY id DESC LIMIT 50').all());
 if(p==='/api/site/reset'&&m==='POST'){const b=await body(q);if(b.confirm!=='RESET DESIGN')return send(r,400,{error:'Confirmation required'});const v={...getSite(),...design()};return send(r,200,saveSite(v));}
+if(p==='/api/professional/setup'&&['GET','POST'].includes(m)){
+ const build=()=>buildProfessionalSetup(db.prepare('SELECT * FROM records').all(),getSite(),cvSkillDrafts);
+ if(m==='GET')return send(r,200,build());
+ const b=await body(q);
+ if(b.action==='preview')return send(r,200,build());
+ if(b.action!=='apply'||b.confirm!==true)return send(r,400,{error:'Confirmation required'});
+ const plan=build();
+ db.exec('BEGIN');
+ try{
+  if(Object.keys(plan.sitePatch).length){
+   db.prepare("INSERT INTO settings(key,value) VALUES('professional_setup_draft',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({
+    patch:plan.sitePatch,
+    created:new Date().toISOString()
+   }));
+  }
+  for(const skill of plan.skillDrafts){
+   const id=randomBytes(16).toString('hex');
+   db.prepare('INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,?,?,?,?,?)').run(id,skill.kind,skill.brand,skill.title,skill.body,skill.status);
+   db.prepare('UPDATE records SET ar_title=?,en_title=?,ar_body=?,en_body=?,icon=?,catalog=? WHERE id=?').run(skill.ar_title,skill.en_title,skill.ar_body,skill.en_body,skill.icon,JSON.stringify(skill.catalog),id);
+  }
+  audit('professional setup reviewed and applied');
+  db.exec('COMMIT');
+ }catch(e){db.exec('ROLLBACK');throw e}
+ return send(r,200,{...plan,applied:true});
+}
 if(p==='/api/site/restore'&&m==='POST'){const b=await body(q);if(b.confirm!==true)return send(r,400,{error:'Confirmation required'});const row=db.prepare('SELECT snapshot FROM site_revisions WHERE id=?').get(b.id);if(!row)return send(r,404,{error:'Version not found'});const v=JSON.parse(row.snapshot);return send(r,200,saveSite({...v,...design(v)}));}
 
 if(p==='/api/download-settings'&&m==='GET'){const id=u.searchParams.get('id');const row=db.prepare('SELECT paths FROM imports WHERE id=?').get(id);return send(r,200,{files:row?JSON.parse(row.paths):[],setting:db.prepare('SELECT path,enabled FROM downloads WHERE project_id=?').get(id)||null})}
@@ -195,6 +298,126 @@ if(p==='/api/ai/execute'&&m==='POST'){
  const x=plan.record,id=randomBytes(16).toString('hex');
  db.exec('BEGIN');try{db.prepare("INSERT INTO records(id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body) VALUES(?,?,?,?,?,'draft',?,?,?,?)").run(id,x.kind,'personal',x.title,x.body,x.ar_title,x.en_title,x.ar_body,x.en_body);audit('axis record draft created '+id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}
  drafts.delete(b.id);return send(r,201,{action:plan.action,id,status:'draft'});
+}
+
+if(p==='/api/ai/manager/ingest/preview'&&m==='POST'){
+ if(limited(ip+':ingestion',12))return send(r,429,{error:'Too many file previews'});
+ try {
+  const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
+  const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+  const result=await previewIngestion(b.input,rows);
+  return send(r,200,result);
+ } catch(e) { return ingestionError(r,e); }
+}
+if(p==='/api/ai/manager/ingest/prepare'&&m==='POST'){
+ if(limited(ip+':ingestion-plan',6))return send(r,429,{error:'Too many plans'});
+ try {
+  const b=await body(q,Math.ceil(4*1024*1024/3)*4+4096);
+  const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+  const {plan,selected}=await prepareIngestionPlan(b.input,b.selectedIds,rows);
+  const id=randomBytes(16).toString('hex');
+  drafts.set(id,{token,manager:true,mode:'approve',plan,expires:Date.now()+600000});
+  audit('manager ingestion plan created');
+  return send(r,200,{id,...plan,selected});
+ } catch(e) { return ingestionError(r,e); }
+}
+if(p==='/api/ai/manager/site/capabilities'&&m==='GET')return send(r,200,{...sourceEditor.capabilities,aiConfigured:providerConfigured(),externalAI});
+if(p.startsWith('/api/ai/manager/site/')&&m==='POST'){
+ if(limited(ip+':site-edits',15))return send(r,429,{error:'Try later'});
+ const b=await body(q,65536),ctx=ownerSourceContext(q,token);
+ try{
+  if(p==='/api/ai/manager/site/preview'){
+   const response=b.mode==='ai'?(providerConfigured()?await sourcePlanner.draft(ctx,{request:b.request,consentExternal:b.consentExternal===true}):null)
+    :await stageHomeFeature(sourceEditor,ctx,b);
+   if(!response)return send(r,503,{error:'Configure an AI provider for complex source changes'});
+   return send(r,200,response);
+  }
+  if(p==='/api/ai/manager/site/approve'){
+   if(b.acknowledge!==true)return send(r,400,{error:'Explicit approval required'});
+   return send(r,200,await sourceEditor.approve(ctx,b));
+  }
+  if(p==='/api/ai/manager/site/reject')return send(r,200,await sourceEditor.reject(ctx,b));
+  if(p==='/api/ai/manager/site/undo')return send(r,200,await sourceEditor.undo(ctx,b));
+  return send(r,404,{error:'Not found'});
+ }catch(e){return send(r,e.code==='PLAN_INVALID'||e.code==='STALE_PLAN'?409:400,{error:e.message||'Source edit failed'});}
+}
+if(p==='/api/ai/manager/read'&&m==='POST'){
+ const b=await body(q,65536),kind=['all',...managerKinds].includes(b.kind)?b.kind:'all';
+ if(typeof b.query!=='string'||b.query.length>180)return send(r,400,{error:'Invalid search'});
+ const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+ return send(r,200,{rows:readManagerContext(rows,kind,b.query)});
+}
+if(p==='/api/ai/manager/plan'&&m==='POST'){
+ if(limited(ip+':manager-ai',5))return send(r,429,{error:'Try later'});
+ if(!providerConfigured())return send(r,503,{error:'AI provider not configured'});
+ const b=await body(q,65536),prompt=clean(b.prompt,2000);
+ if(!prompt)return send(r,400,{error:'Empty request'});
+ const rows=db.prepare('SELECT * FROM records ORDER BY created DESC').all();
+ const actionRead=b.action==='read'?b:null;
+ if(actionRead){
+  const kind=['all',...managerKinds].includes(actionRead.kind)?actionRead.kind:'all';
+  return send(r,200,validateManagerPlan({action:'read',kind,query:actionRead.query||''},rows));
+ }
+ let raw;
+ try{
+  raw=await generate(aiManagerInstruction,JSON.stringify({
+   language:b.language==='ar'?'Arabic':'English',
+   mode:b.mode==='suggest'?'suggest-only':'approval-required',
+   records:readManagerContext(rows,b.kind==='all'? 'all':(b.kind||'all'),b.query||''),
+   request:prompt
+  }));
+ }catch{return send(r,502,{error:'AI provider unavailable or returned invalid JSON'})}
+ let plan;
+ try{plan=validateManagerPlan(raw,rows)}catch(e){return send(r,422,{error:e.message||'Invalid manager plan'})}
+ if(plan.action==='answer')return send(r,200,plan);
+ const id=randomBytes(16).toString('hex');
+ drafts.set(id,{token,manager:true,mode:b.mode==='suggest'?'suggest':'approve',plan,expires:Date.now()+600000});
+ audit('ai manager plan created');
+ return send(r,200,{id,...plan});
+}
+if(p==='/api/ai/manager/cancel'&&m==='POST'){
+ const b=await body(q),d=drafts.get(b.id);
+ if(!d?.manager||d.token!==token||d.expires<Date.now())return send(r,404,{error:'Manager plan unavailable'});
+ drafts.delete(b.id);audit('ai manager plan cancelled');return send(r,200,{ok:true});
+}
+if(p==='/api/ai/manager/execute'&&m==='POST'){
+ const b=await body(q,65536),d=drafts.get(b.id);
+ if(!d?.manager||d.token!==token||d.expires<Date.now())return send(r,404,{error:'Manager plan unavailable; request a new preview'});
+ if(d.mode==='suggest')return send(r,403,{error:'Suggest-only plans cannot be executed'});
+ if(b.confirm!==true)return send(r,400,{error:'Explicit confirmation required'});
+ const plan=d.plan;
+ db.exec('BEGIN');
+ try{
+  const created=[],updated=[];
+  if(plan.action==='preview_create'){
+   for(const draft of plan.records){
+    const normalize=v=>String(v||'').normalize('NFKC').toLocaleLowerCase().trim();
+    const existing=db.prepare("SELECT * FROM records WHERE kind=? AND status!='deleted'").all(draft.kind);
+    const duplicate=existing.some(current=>{
+     const iconMatch=!!draft.icon&&normalize(current.icon)===normalize(draft.icon);
+     const arMatch=normalize(draft.ar_title||draft.title)===normalize(current.ar_title||current.title);
+     const enMatch=normalize(draft.en_title||draft.title)===normalize(current.en_title||current.title);
+     const titleMatch=arMatch&&enMatch;
+     return iconMatch||titleMatch;
+    });
+    if(duplicate)throw Error('A matching record already exists');
+    const id=randomBytes(16).toString('hex');
+    db.prepare('INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,?,?,?,?,?)').run(id,draft.kind,draft.brand,draft.title,draft.body,draft.status);
+    db.prepare('UPDATE records SET ar_title=?,en_title=?,ar_body=?,en_body=?,icon=? WHERE id=?').run(draft.ar_title,draft.en_title,draft.ar_body,draft.en_body,draft.icon,id);
+    created.push({id,kind:draft.kind,status:'draft'});
+   }
+  }else if(plan.action==='preview_update'){
+   const row=db.prepare("SELECT * FROM records WHERE id=? AND kind=? AND status!=?").get(plan.id,plan.kind,'deleted');
+   if(!row||row.status==='published'||JSON.stringify(row)!==plan.base)throw Error('Record changed; request a new preview');
+   snapshot(row.id);
+   for(const [field,value] of Object.entries(plan.patch))db.prepare(`UPDATE records SET ${field}=? WHERE id=?`).run(value,row.id);
+   updated.push({id:row.id,kind:row.kind,status:row.status});
+  }else throw Error('Unsupported manager action');
+  audit('ai manager approved changes '+created.length+'/'+updated.length);
+  db.exec('COMMIT');
+  drafts.delete(b.id);
+  return send(r,200,{action:plan.action,created,updated,status:'draft'});
+ }catch(e){db.exec('ROLLBACK');return send(r,409,{error:e.message||'Manager save failed'})}
 }
 if(p==='/api/ai/draft'&&m==='POST'){if(limited(ip+':ai',5))return send(r,429,{error:'Try later'});if(!providerConfigured())return send(r,503,{error:'AI provider not configured'});const b=await body(q),prompt=clean(b.prompt,2000);if(!prompt)return send(r,400,{error:'Empty request'});const v=await generate('Draft a website content record only. Do not invent facts. Return JSON with kind (article, page, project, service or product), title, body. Language: '+(b.language==='ar'?'Arabic':'English'),prompt);const kind=clean(v.kind,30),title=clean(v.title,150),content=clean(v.body,30000);if(!['article','page','project','service','product'].includes(kind)||!title||!content)return send(r,422,{error:'Invalid draft'});for(const [k,d] of drafts)if(d.expires<Date.now())drafts.delete(k);const id=randomBytes(16).toString('hex');drafts.set(id,{token,kind,title,body:content,expires:Date.now()+600000});audit('ai draft proposed');return send(r,200,{id,kind,title,body:content});}
 if(p==='/api/ai/approve'&&m==='POST'){const b=await body(q),d=drafts.get(b.id);if(!d||d.plan||d.token!==token||d.expires<Date.now())return send(r,404,{error:'Draft unavailable'});const id=randomBytes(16).toString('hex');db.prepare('INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,?,?,?,?,?)').run(id,d.kind,'personal',d.title,d.body,'draft');drafts.delete(b.id);audit('ai draft approved '+id);return send(r,201,{id});}

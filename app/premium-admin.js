@@ -1,3 +1,4 @@
+import {mountManagerWorkflows} from './manager-workflows.js';
 // Private UI only. This module is used by /admin; none of its screens are exported to Pages.
 import {overviewMetrics, searchWorkspace, readinessAudit, layoutOffenders, inquiryCSV,validateQuickProject} from './premium-tools.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,3 +11,54 @@ export function mountResponsiveGuard(panel,ctx){const {ar}=ctx;panel.innerHTML=`
 export function mountWizard(panel,ctx){const {ar,goto,api,refresh}=ctx;panel.innerHTML=`<div class="studio-banner"><h2>${ar?'معالج إضافة مشروع':'Project setup wizard'}</h2><p>${ar?'ينشئ مسودة خاصة فقط. لا يُرفع شيء إلى الموقع العام إلا بعد الاعتماد والنشر.':'Creates a private draft only. Nothing is published without approval.'}</p></div><form class="card" id="ix-wizard-form"><label>${ar?'عنوان المشروع':'Project title'}<input name="title" required maxlength="150"></label><label>${ar?'وصف مختصر (اختياري)':'Brief (optional)'}<textarea name="body" maxlength="30000" rows="5"></textarea></label><label>${ar?'عنوان بالعربية (اختياري)':'Arabic title (optional)'}<input name="ar_title" maxlength="150"></label><label>${ar?'عنوان بالإنجليزية (اختياري)':'English title (optional)'}<input name="en_title" maxlength="150"></label><button class="primary" type="submit">${ar?'إنشاء مسودة خاصة':'Create private draft'}</button><p id="ix-wizard-status" role="status"></p></form><section class="card"><h3>${ar?'عندك ملفات جاهزة؟':'Have files ready?'}</h3><p>${ar?'استخدم الاستيراد الخاص لدعم CSV وملفات المشاريع، ثم افتح الاستوديو لإنشاء المعاينة.':'Use private import for CSV and project files, then create a private preview in Studio.'}</p><button id="ix-wizard-import">${ar?'افتح استيراد الملفات':'Open file import'}</button></section>`;panel.querySelector('#ix-wizard-import').onclick=()=>goto('import');panel.querySelector('#ix-wizard-form').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type=submit]'),status=panel.querySelector('#ix-wizard-status');button.disabled=true;try{const v=validateQuickProject(Object.fromEntries(new FormData(form)));await api('records',v);await refresh();status.textContent=ar?'تم حفظ المشروع كمسودة خاصة.':'Private project draft created.';goto('studio');}catch(err){status.textContent=err.message;button.disabled=false}};}
 export function mountClientTools(panel,ctx){const {records,ar}=ctx,rows=records.filter(x=>x.kind==='inquiry'&&x.status!=='deleted');const box=document.createElement('section');box.className='card ix-client-workflow';box.innerHTML=`<h3>${ar?'فرز الطلبات وتصديرها':'Filter & export inquiries'}</h3><p class="muted">${ar?'البيانات خاصة، لا تشارك ملف التصدير إلا مع جهة موثوقة.':'Private customer data. Export only to trusted recipients.'}</p><div class="ix-form-pair"><label>${ar?'ابحث في العنوان':'Search title'}<input id="ix-client-search" maxlength="120"></label><label>${ar?'الحالة':'Status'}<select id="ix-client-state"><option value="all">${ar?'الكل':'All'}</option>${['new','under_review','approved','completed','archived'].map(s=>`<option value="${s}">${esc(s)}</option>`).join('')}</select></label></div><div id="ix-client-rows" aria-live="polite"></div><button id="ix-client-export">${ar?'تصدير الطلبات CSV (خاص)':'Export private inquiries CSV'}</button>`;panel.append(box);const search=box.querySelector('#ix-client-search'),state=box.querySelector('#ix-client-state'),out=box.querySelector('#ix-client-rows');function render(){const filtered=rows.filter(x=>(state.value==='all'||x.status===state.value)&&String(x.title||'').toLowerCase().includes(search.value.toLowerCase())).slice(0,30);out.innerHTML=filtered.length?filtered.map(x=>`<div class="ix-search-result"><strong>${esc(x.title)}</strong><small>${esc(x.status)}</small></div>`).join(''):`<p>${ar?'لا توجد طلبات مطابقة':'No matching inquiries'}</p>`;}search.oninput=render;state.onchange=render;box.querySelector('#ix-client-export').onclick=()=>{if(!confirm(ar?'الملف يحتوي بيانات خاصة للعملاء. هل تريد تنزيله على جهازك؟':'Download private customer records to your device?'))return;download(inquiryCSV(records,ar),'ibraxis-private-inquiries.csv','text/csv;charset=utf-8');};render();}
 export function mountReleaseReview(panel,ctx){const {records,ar,api,goto}=ctx;const stats=overviewMetrics(records);const section=document.createElement('section');section.className='card';section.innerHTML=`<h3>${ar?'مراجعة ما قبل النشر':'Pre-publish review'}</h3><p>${ar?'النشر ينقل المحتوى المعتمد فقط من المستودع الخاص إلى GitHub Pages. راجع البيانات قبل الضغط على زامن وانشر.':'Only approved public content is deployed to Pages. Review before publishing.'}</p><div class="ix-stat-grid"><article class="ix-stat"><span>${ar?'مشاريع منشورة':'Public projects'}</span><strong>${stats.published}</strong></article><article class="ix-stat"><span>${ar?'مسودات خاصة':'Private drafts'}</span><strong>${stats.drafts}</strong></article></div><p class="muted">${ar?'استعادة إعدادات التصميم متاحة من استوديو التصميم. استرجاع كود الموقع يتطلب استخدام سجل GitHub؛ لا يوجد زر رجوع تلقائي.':'Restore design settings in Design Studio. Code rollback is through GitHub history; there is no automatic one-click rollback.'}</p><button id="ix-release-restore">${ar?'افتح تاريخ التصميم':'Design history & restore'}</button><p id="ix-release-history"></p>`;panel.append(section);section.querySelector('#ix-release-restore').onclick=()=>goto('design');api('site/history').then(history=>{const node=section.querySelector('#ix-release-history');if(node)node.textContent=(ar?'إصدارات تصميم محفوظة: ':'Saved design revisions: ')+history.length;}).catch(()=>{});}
+
+export function mountAIManager(panel,ctx){
+ const {ar,api,refresh}=ctx;
+ panel.innerHTML=`<div class="studio-banner"><div class="eyebrow">IBRAXIS / AI MANAGER</div><h2>${ar?'مدير IBRAXIS الذكي':'IBRAXIS AI Manager'}</h2><p>${ar?'قراءة واعتماد إنشاء مسودات التعليم والخبرات والشهادات والمهارات فقط. لا ينشر أو يحذف أو يغيّر الصورة الشخصية.':'Read and approve draft education, career, certification and skill records only. It does not publish, delete or alter the portrait.'}</p></div><section class="card ix-manager-chat"><div class="ix-manager-toolbar"><label>${ar?'الموضوع':'Scope'}<select id="ix-manager-kind"><option value="all">${ar?'الكل':'All'}</option>${[['skill','Skills','المهارات'],['education','Education','التعليم'],['career','Career','الخبرات'],['certification','Certifications','الشهادات']].map(x=>`<option value="${esc(x[0])}">${ar?esc(x[2]):esc(x[1])}</option>`).join('')}</select></label><label>${ar?'وضع التشغيل':'Mode'}<select id="ix-manager-mode"><option value="approve">${ar?'تنفيذ بعد الموافقة':'Approve before execution'}</option><option value="suggest">${ar?'اقتراح فقط':'Suggest only'}</option></select></label></div><form id="ix-manager-form"><label>${ar?'أمر المدير الذكي':'Manager request'}<textarea id="ix-manager-prompt" required maxlength="2000" rows="5" placeholder="${ar?'اعرض المهارات المفقودة واقترح مسودات موثقة فقط':'Review missing skills and suggest documented private drafts only'}"></textarea></label><div class="toolbar"><button type="button" id="ix-manager-read" class="secondary">${ar?'قراءة السجلات':'Read records'}</button><button type="submit" class="primary">${ar?'جهّز الخطة':'Prepare plan'}</button></div></form><div id="ix-manager-output" class="ix-manager-output" aria-live="polite"></div><div class="toolbar"><button type="button" id="ix-manager-cancel" class="secondary" hidden>${ar?'رفض الخطة':'Reject plan'}</button><button type="button" id="ix-manager-approve" class="primary" hidden>${ar?'اعتماد وحفظ المسودات':'Approve & save drafts'}</button></div></section>`;
+ const out=panel.querySelector('#ix-manager-output'),kind=panel.querySelector('#ix-manager-kind'),mode=panel.querySelector('#ix-manager-mode'),prompt=panel.querySelector('#ix-manager-prompt'),approve=panel.querySelector('#ix-manager-approve'),cancel=panel.querySelector('#ix-manager-cancel');
+ let pending=null;
+ const line=(text)=>{const p=document.createElement('p');p.textContent=text;out.append(p)};
+ const renderRecords=rows=>{
+  out.replaceChildren();
+  line(ar?`السجلات المطابقة: ${rows.length}`:`Matching records: ${rows.length}`);
+  for(const row of rows.slice(0,100)){const p=document.createElement('article');p.className='ix-search-result';p.innerHTML=`<strong>${esc(row.ar_title||row.title||row.kind)}</strong><small>${esc(row.kind)} · ${esc(row.status)}</small><p>${esc(row.ar_body||row.en_body||row.body||'')}</p>`;out.append(p)}
+ };
+ panel.querySelector('#ix-manager-read').onclick=async()=>{
+  try{const v=await api('ai/manager/read',{kind:kind.value,query:prompt.value.slice(0,180)});renderRecords(v.rows)}catch(e){out.textContent=e.message}
+ };
+ panel.querySelector('#ix-manager-form').onsubmit=async e=>{
+  e.preventDefault();
+  if(!prompt.value.trim())return;
+  approve.hidden=cancel.hidden=true;pending=null;out.textContent=ar?'جارٍ تجهيز الخطة…':'Preparing plan…';
+  try{
+   const v=await api('ai/manager/plan',{prompt:prompt.value,language:ar?'ar':'en',mode:mode.value==='suggest'?'suggest':'approve',kind:kind.value,query:prompt.value.slice(0,180)});
+   if(v.action==='answer'){out.textContent=v.message;return}
+   out.replaceChildren();
+   if(v.action==='read'){renderRecords(v.rows);return}
+   if(v.action==='preview_create'){
+    line(ar?'مسودات مقترحة — لن تُنشأ قبل الموافقة':'Proposed drafts — nothing is created until approval');
+    for(const r of v.records){const p=document.createElement('article');p.className='ix-search-result';p.innerHTML=`<strong>${esc(r.ar_title||r.title)}</strong><small>${esc(r.kind)} · draft</small><p>${esc(r.ar_body||r.body||'')}</p><p>${esc(r.en_title||r.title)} · ${esc(r.en_body||r.body||'')}</p>${r.icon?`<small>icon: ${esc(r.icon)}</small>`:''}`;out.append(p)}
+    pending=v.id;approve.hidden=cancel.hidden=false;
+   }else if(v.action==='preview_update'){
+    line(ar?'تعديلات مقترحة — لن تُحفظ قبل الموافقة':'Proposed updates — nothing is saved until approval');
+    for(const c of v.changes)line(`${esc(c.field)}: ${esc(c.before)} → ${esc(c.after)}`);
+    pending=v.id;approve.hidden=cancel.hidden=false;
+   }else{out.textContent=ar?'الخطة غير مدعومة':'Unsupported plan'}
+  }catch(e){out.textContent=e.message}
+ };
+ cancel.onclick=async()=>{
+  if(!pending)return;
+  try{await api('ai/manager/cancel',{id:pending});pending=null;approve.hidden=cancel.hidden=true;out.textContent=ar?'تم رفض الخطة. لم تُحفظ تغييرات.':'Plan rejected. No changes saved.'}catch(e){out.textContent=e.message}
+ };
+ approve.onclick=async()=>{
+  if(!pending||mode.value==='suggest')return;
+  if(!confirm(ar?'حفظ المسودات المعتمدة فقط؟ لن ينشر أي سجل.':'Save approved drafts only? No record will be published.'))return;
+  try{const v=await api('ai/manager/execute',{id:pending,confirm:true});pending=null;approve.hidden=cancel.hidden=true;await refresh();out.textContent=(ar?'تم الحفظ: ':'Saved: ')+(v.created?.length||0)+(ar?' مسودة جديدة؛ ':' new drafts; ')+(v.updated?.length||0)+(ar?' تعديلًا.':' updates.')}catch(e){out.textContent=e.message}
+ };
+ const legacy=panel.querySelector('.ix-manager-chat');
+ const advanced=document.createElement('details');advanced.className='card ix-manager-advanced';
+ const summary=document.createElement('summary');summary.textContent=ar?'محادثة إدارة السجلات المتقدمة (اختياري)':'Advanced record-management chat (optional)';
+ legacy.replaceWith(advanced);advanced.append(summary,legacy);
+ mountManagerWorkflows(panel,ctx);
+ panel.append(advanced);
+}
