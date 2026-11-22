@@ -129,3 +129,21 @@ body[data-button_size=large] :is(button,.primary,.secondary){min-height:48px;pad
 .ix-skill-path{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:1.1rem 0 1.4rem;padding:.75rem;border-radius:15px;background:color-mix(in srgb,var(--accent) 6%,transparent);border:1px solid var(--line)}.ix-skill-path-step{display:flex;align-items:center;gap:.4rem;font-size:.74rem;line-height:1.5;white-space:normal}.ix-skill-path-step b{font:800 .72rem/1.1 system-ui;color:var(--accent)}.ix-skill-path-arrow{color:var(--accent);opacity:.65;margin-inline:.1rem}@media(max-width:540px){.ix-skill-path{gap:.5rem}.ix-skill-path-arrow{display:none}.ix-skill-path-step{flex:1 1 42%;min-width:0}}
 
 .ix-manager-chat{max-width:980px}.ix-manager-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.ix-manager-output{min-height:180px;max-height:520px;overflow:auto;margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}.ix-manager-output:empty{display:none}.ix-manager-output .ix-search-result{display:grid;gap:6px;padding:12px;border-block-end:1px solid var(--line)}.ix-manager-output .ix-search-result:last-child{border-block-end:0}@media(max-width:700px){.ix-manager-toolbar{grid-template-columns:1fr}}
+
+/* Keep the approved portrait beside the About heading and introduction, not
+   vertically centered beside the full biography, journey and skill gallery. */
+.identity:has(> .portrait[class*="ix-photo--"]),
+.ix-profile-section:has(> .ix-profile-about) {
+  align-items: start;
+}
+.identity > .portrait[class*="ix-photo--"],
+.ix-profile-section > .ix-profile-about {
+  align-self: start;
+}
+@media (max-width: 760px) {
+  .identity > .portrait[class*="ix-photo--"],
+  .ix-profile-section > .ix-profile-about {
+    justify-self: center;
+    max-width: min(100%, 330px);
+  }
+}
