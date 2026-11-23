@@ -120,7 +120,7 @@ body[data-button_size=large] :is(button,.primary,.secondary){min-height:48px;pad
 .ix-skill-lab{width:100%;min-width:0;grid-column:1/-1;margin-block:clamp(1.3rem,3vw,2.6rem);padding:clamp(1rem,2.2vw,2rem);border:1px solid var(--line);border-radius:24px;background:color-mix(in srgb,var(--panel, #172331) 78%,transparent);overflow:hidden}
 .ix-skill-intro{max-width:60ch;margin-bottom:1.15rem}.ix-skill-intro h3{font-size:clamp(1.25rem,2.7vw,2rem);line-height:1.3;margin:.45rem 0}.ix-skill-intro p{opacity:.82;margin:0;line-height:1.7}.ix-skill-kicker{font-size:.78rem;letter-spacing:.13em;text-transform:uppercase;font-weight:800;color:var(--accent)}
 .ix-skill-filters{display:flex;flex-wrap:wrap;gap:.55rem;margin:1.3rem 0}.ix-skill-filters button{padding:.55rem .85rem;font-size:.84rem;border:1px solid var(--line);border-radius:999px;background:transparent;color:inherit;cursor:pointer;min-height:40px}.ix-skill-filters button[aria-pressed=true]{background:var(--accent);color:#10201e;border-color:transparent;font-weight:750}.ix-skill-filters button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
-.ix-skill-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:.9rem}.ix-skill-card{min-width:0;padding:1.15rem;border:1px solid var(--line);background:color-mix(in srgb,var(--card, #1b2635) 86%,transparent);border-radius:17px;display:flex;flex-direction:column;gap:.45rem;transition:transform .2s,border-color .2s}.ix-skill-card:hover{transform:translateY(-3px);border-color:var(--accent)}.ix-skill-card-head{display:flex;align-items:center;gap:.7rem}.ix-skill-category{font-size:.69rem;opacity:.75;line-height:1.35}.ix-skill-card h4{font-size:1.05rem;margin:.3rem 0}.ix-skill-card p{font-size:.87rem;line-height:1.65;opacity:.82;margin:0;overflow-wrap:anywhere}.ix-skill-brand{flex:none;width:52px;height:52px;display:grid;place-items:center;border:1px solid currentColor;border-radius:14px;background:color-mix(in srgb,currentColor 9%,transparent);font:800 .93rem/1 system-ui,sans-serif;letter-spacing:-.03em;color:var(--accent)}.ix-brand--python{color:#3776ab}.ix-brand--sql{color:#298ba8}.ix-brand--powerbi{color:#bb8f18}.ix-brand--excel{color:#21834e}.ix-brand--pandas{color:#9172e2}.ix-brand--matplotlib{color:#338eaf}.ix-brand--jupyter{color:#d77225}.ix-brand--git{color:#dc593e}.ix-brand--machinelearning{color:#8b78d0}.ix-brand--tableau{color:#3283b6}.ix-brand--numpy{color:#468aa9}.ix-brand--scikitlearn{color:#df8628}.ix-brand--tensorflow{color:#ec9034}.ix-brand--pytorch{color:#d94c40}
+.ix-skill-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:.9rem}.ix-skill-card{min-width:0;padding:1.15rem;border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 94%,var(--bg));border-radius:17px;display:flex;flex-direction:column;gap:.45rem;transition:transform .2s,border-color .2s}.ix-skill-card:hover{transform:translateY(-3px);border-color:var(--accent)}.ix-skill-card-head{display:flex;align-items:center;gap:.7rem}.ix-skill-category{font-size:.69rem;opacity:.75;line-height:1.35}.ix-skill-card h4{font-size:1.05rem;margin:.3rem 0}.ix-skill-card p{font-size:.87rem;line-height:1.65;opacity:.82;margin:0;overflow-wrap:anywhere}.ix-skill-brand{flex:none;width:52px;height:52px;display:grid;place-items:center;border:1px solid currentColor;border-radius:14px;background:color-mix(in srgb,currentColor 9%,transparent);font:800 .93rem/1 system-ui,sans-serif;letter-spacing:-.03em;color:var(--accent)}.ix-brand--python{color:#3776ab}.ix-brand--sql{color:#298ba8}.ix-brand--powerbi{color:#bb8f18}.ix-brand--excel{color:#21834e}.ix-brand--pandas{color:#9172e2}.ix-brand--matplotlib{color:#338eaf}.ix-brand--jupyter{color:#d77225}.ix-brand--git{color:#dc593e}.ix-brand--machinelearning{color:#8b78d0}.ix-brand--tableau{color:#3283b6}.ix-brand--numpy{color:#468aa9}.ix-brand--scikitlearn{color:#df8628}.ix-brand--tensorflow{color:#ec9034}.ix-brand--pytorch{color:#d94c40}
 .ix-skill-proof{margin-top:auto;border-top:1px solid var(--line);padding-top:.65rem;display:flex;flex-direction:column;gap:.4rem;font-size:.78rem}.ix-skill-proof span{opacity:.7}.ix-skill-evidence{color:var(--accent);overflow-wrap:anywhere}.ix-skill-management{border:1px solid var(--line);border-radius:16px;padding:1.2rem;margin:.8rem 0 1.25rem}.ix-skill-management p{line-height:1.7;max-width:70ch}.ix-skill-management .identity-icon{display:inline-flex;align-items:center;vertical-align:middle;margin-inline:.4rem}.ix-skill-management .identity-icon svg{width:30px;height:30px}
 @media(max-width:600px){.ix-skill-lab{padding:1rem;border-radius:16px}.ix-skill-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ix-skill-brand{width:43px;height:43px}.ix-skill-card{padding:.75rem}}
 @media(max-width:370px){.ix-skill-grid{grid-template-columns:1fr}}
@@ -146,4 +146,311 @@ body[data-button_size=large] :is(button,.primary,.secondary){min-height:48px;pad
     justify-self: center;
     max-width: min(100%, 330px);
   }
+}
+
+
+/* IBRAXIS • Visual System Refresh
+   Consistent readable surfaces in both themes. Uses the official, admin-editable
+   color tokens; no hardcoded dark cards, external font downloads or JS changes.
+   This appendix deliberately keeps the approved portrait and page structure. */
+:root {
+  --ix-radius-sm: 12px;
+  --ix-radius-md: 18px;
+  --ix-radius-lg: 26px;
+  --ix-font-en: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --ix-font-ar: "Noto Sans Arabic", "Segoe UI", Tahoma, Arial, sans-serif;
+}
+body {
+  --ix-surface: color-mix(in srgb, var(--panel) 94%, var(--bg));
+  --ix-subtle: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  --ix-tint: color-mix(in srgb, var(--accent) 9%, var(--panel));
+  --ix-focus: color-mix(in srgb, var(--accent) 66%, transparent);
+  --ix-card-shadow: 0 12px 34px #00000012;
+  font-family: var(--ix-font-en);
+  font-size: 16px;
+  line-height: 1.72;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: radial-gradient(ellipse at 90% 2%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 38%),var(--bg);
+  color: var(--ink);
+}
+html[lang="ar"] body, html[dir="rtl"] body {
+  font-family: var(--ix-font-ar);
+  line-height: 1.9;
+  letter-spacing: 0;
+}
+body.light {
+  --ix-card-shadow: 0 12px 32px #1528400b;
+}
+body:not(.light) {
+  --ix-card-shadow: 0 16px 46px #00000025;
+}
+::selection {background:color-mix(in srgb,var(--accent) 32%,transparent);color:var(--ink)}
+:is(h1,h2,h3,h4,h5,h6) {color:var(--ink);font-family:inherit;font-weight:780;line-height:1.3;text-wrap:balance}
+html[lang="ar"] :is(h1,h2,h3,h4,h5,h6) {line-height:1.5;letter-spacing:0}
+:is(p,li,dd,dt,blockquote) {overflow-wrap:anywhere}
+:where(p,li) {text-wrap:pretty}
+main {max-width:1320px}
+header {max-width:1320px;gap:clamp(12px,2.5vw,28px);border-color:var(--line);box-shadow:0 1px 0 color-mix(in srgb,var(--line) 32%,transparent)}
+nav {gap:clamp(10px,2vw,23px)}
+nav a {color:var(--ink);opacity:.84;text-decoration:none}
+nav a:hover,nav a:focus-visible {color:var(--accent);opacity:1}
+.logo {font-size:clamp(1.15rem,1.8vw,1.45rem);font-weight:850}
+:is(.eyebrow,.ix-skill-kicker,.ix-capability-head,.card-index) {font-weight:800}
+:is(.hero-copy h1,.ix-home-copy h1,.gallery-intro h1,.admin-title h1) {font-size:clamp(2.55rem,6.4vw,5.65rem);line-height:1.12;letter-spacing:-.044em}
+html[dir="rtl"] :is(.hero-copy h1,.ix-home-copy h1,.gallery-intro h1,.admin-title h1) {line-height:1.4;letter-spacing:0}
+:is(.hero-copy p,.ix-home-lead,.gallery-intro p,.ix-featured p) {color:var(--muted);line-height:1.88}
+:is(.content-section,.ix-featured,.ix-skill-lab,.ix-home-capabilities) {scroll-margin-top:105px}
+:is(.section-head,.activity-head) {margin-block:clamp(24px,4vw,48px) 18px}
+.section-head {gap:14px}
+
+/* Unified surfaces: home, project pages, forms, dashboard, skill gallery. */
+:is(.card,.empty,.contact,.studio-banner,.side,.ix-home-lab,.ix-capability,
+    .ix-featured,.ix-featured-item,.ix-kpi,.ix-skill-lab,.ix-skill-card,
+    .ix-skill-management,.ix-search-result,.ix-diagnostic-grid div,
+    .ix-inquiry-field,.identity-chip,.project-step,.ix-photo-workspace) {
+  color:var(--ink);
+  border-color:var(--line);
+  background-color:var(--ix-surface);
+  border-radius:var(--ix-radius-md);
+}
+:is(.card,.contact,.studio-banner,.ix-capability,.ix-featured,.ix-kpi,.ix-skill-lab) {
+  box-shadow:var(--ix-card-shadow);
+}
+:is(.ix-featured,.ix-home-lab,.studio-banner) {
+  background-image:linear-gradient(150deg,var(--ix-tint),var(--ix-surface) 50%,var(--ix-subtle));
+}
+:is(.card,.ix-capability,.ix-featured-item,.ix-kpi,.project-step,.ix-skill-card) {
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+:is(.showcase,.ix-capability,.project-step,.ix-skill-card):hover {
+  border-color:color-mix(in srgb,var(--accent) 60%,var(--line));
+  box-shadow:0 15px 35px #00000016;
+}
+:is(.card,.ix-capability,.ix-kpi,.ix-featured-item,.project-step) :is(p,small) {color:var(--muted)}
+:is(.ix-kpi strong,.activity-number) {color:var(--ink);letter-spacing:-.025em}
+:is(.showcase,.gallery-card,.live-card) {min-width:0}
+:is(.showcase,.gallery-card) {border-radius:var(--ix-radius-md);overflow:hidden}
+:is(.portrait,.ix-profile-about,.ix-hero-portrait) {box-shadow:0 18px 46px #0000001c}
+
+/* Reliable buttons, links, keyboard focus and form fields. */
+:is(button,.primary,.secondary) {font-family:inherit;font-weight:700;border-radius:var(--ix-radius-sm);min-height:42px}
+:is(.primary,.assistant-toggle) {background:var(--accent);border:1px solid var(--accent);font-weight:780}
+body.light :is(.primary,.assistant-toggle) {color:#fff}
+body:not(.light) :is(.primary,.assistant-toggle) {color:#091522}
+:is(.primary,.assistant-toggle):hover {filter:brightness(.95)}
+:is(.secondary,button:not(.primary):not(.assistant-toggle)) {background:var(--ix-surface);color:var(--ink);border-color:var(--line)}
+:is(.secondary,button:not(.primary):not(.assistant-toggle)):hover {color:var(--accent);border-color:var(--accent)}
+:is(input:not([type="checkbox"]):not([type="radio"]),textarea,select) {
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);
+  border-radius:var(--ix-radius-sm);min-height:44px;line-height:1.55;
+}
+:is(input,textarea,select)::placeholder {color:var(--muted);opacity:.9}
+:is(a,button,input,textarea,select,summary):focus-visible {
+  outline:3px solid var(--ix-focus);outline-offset:3px;
+}
+:is(label,.ix-inquiry-field dt) {color:var(--ink)}
+:where(.ix-connect,.ix-connect-form,.contact,.ix-client-workflow) a:not(.primary):not(.secondary) {color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+
+/* Skills: fix the dark-on-dark/light-on-light mixing in either mode. */
+.ix-skill-lab {background:var(--ix-subtle);padding:clamp(18px,2.6vw,34px)}
+.ix-skill-grid {gap:clamp(12px,1.8vw,20px)}
+.ix-skill-card {background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:clamp(16px,2vw,24px);border-radius:var(--ix-radius-md)}
+.ix-skill-card h4 {color:var(--ink);font-size:1.08rem;line-height:1.45}
+.ix-skill-card :is(p,.ix-skill-category,.ix-skill-proof span) {color:var(--muted);opacity:1}
+.ix-skill-card p {font-size:.91rem;line-height:1.8}
+.ix-skill-category {font-size:.75rem;font-weight:650}
+.ix-skill-proof {border-top-color:var(--line);font-size:.82rem}
+.ix-skill-brand {background:var(--ix-tint);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+.ix-skill-evidence {color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+.ix-skill-filters button {color:var(--ink);border-color:var(--line);background:var(--panel)}
+.ix-skill-filters button[aria-pressed="true"] {background:var(--accent);border-color:var(--accent)}
+body.light .ix-skill-filters button[aria-pressed="true"] {color:#fff}
+body:not(.light) .ix-skill-filters button[aria-pressed="true"] {color:#091522}
+.ix-skill-intro p {color:var(--muted);opacity:1}
+.ix-skill-path {background:var(--ix-tint)}
+
+/* Consistent admin and content reading experience. */
+.admin-title {padding-block:clamp(20px,4vw,38px) 12px}
+.layout {gap:clamp(14px,2vw,26px)}
+.side {padding:12px;box-shadow:var(--ix-card-shadow)}
+.side button {min-height:42px;border-radius:var(--ix-radius-sm)}
+.side button.active {background:var(--ix-tint);color:var(--ink);border-inline-start:3px solid var(--accent)}
+:is(.ix-manager-output,#wb-results,.ix-search-result) {color:var(--ink);border-color:var(--line);background:var(--ix-subtle)}
+:is(.ix-diagnostic-grid dt,.ix-inquiry-field dt,.ix-search-result small,.ix-owner-caption) {color:var(--muted)}
+footer {color:var(--muted);border-top-color:var(--line)}
+body.light .ix-owner strong {color:var(--accent)}
+
+@media(max-width:760px) {
+  main {padding-inline:clamp(14px,4vw,24px)}
+  header {padding:14px clamp(14px,4vw,24px)}
+  :is(.ix-featured,.contact,.studio-banner,.ix-skill-lab) {padding:clamp(16px,4vw,25px)}
+  .ix-skill-card {padding:16px}
+  :is(.hero-copy h1,.ix-home-copy h1,.gallery-intro h1) {font-size:clamp(2.35rem,9vw,4.4rem)}
+}
+@media(prefers-reduced-motion:reduce) {
+  :is(.card,.ix-capability,.ix-featured-item,.ix-kpi,.project-step,.ix-skill-card) {transition:none}
+  :is(.showcase,.ix-capability,.project-step,.ix-skill-card):hover {transform:none}
+}
+
+
+/* IBRAXIS V2.5.3.8 — typography, surfaces, spacing and social identity.
+   Keeps the official theme variables so saved colors remain editable in Admin.
+   Explicit light/dark *component* accents protect contrast even when an
+   older saved palette contains low-contrast brand colors. */
+body {
+  --ix-text-strong:#edf4fd;
+  --ix-text-soft:#c4d0df;
+  --ix-link:#7ce4da;
+  --ix-action:#79e4d5;
+  --ix-action-text:#092333;
+  --ix-ring:#83eadb;
+  --ix-card-raised:color-mix(in srgb,var(--panel) 91%,var(--bg));
+  --ix-edge:color-mix(in srgb,var(--line) 88%,var(--ix-text-soft));
+  --ix-soft-shadow:0 16px 36px #00000025;
+  font-family:Inter,"Segoe UI Variable","Segoe UI",system-ui,sans-serif;
+  font-size:16px;
+  line-height:1.75;
+}
+body.light {
+  --ix-text-strong:#16263a;
+  --ix-text-soft:#445770;
+  --ix-link:#075e76;
+  --ix-action:#09667a;
+  --ix-action-text:#ffffff;
+  --ix-ring:#075e76;
+  --ix-card-raised:color-mix(in srgb,var(--panel) 96%,var(--bg));
+  --ix-edge:color-mix(in srgb,var(--line) 75%,#a6b5c5);
+  --ix-soft-shadow:0 15px 38px #1d35530f;
+}
+html[lang="ar"] body,html[dir="rtl"] body {
+  font-family:"Noto Sans Arabic","IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;
+  line-height:1.85;
+}
+body :is(h1,h2,h3,h4,h5,h6){color:var(--ix-text-strong);font-weight:760;letter-spacing:-.025em}
+html[dir="rtl"] :is(h1,h2,h3,h4,h5,h6){letter-spacing:0;line-height:1.5}
+body :is(p,li,dd,small,.muted){color:var(--ix-text-soft)}
+body :is(.eyebrow,.ix-skill-kicker,.card-index){color:var(--ix-link);opacity:1}
+body :is(a:not(.primary):not(.secondary):not(.ix-social-link):not(.logo),.ix-skill-evidence):hover{color:var(--ix-link)}
+body :is(a,button,input,textarea,select,summary):focus-visible{outline:3px solid var(--ix-ring);outline-offset:3px}
+
+/* Comfortable page rhythm and readable content widths on desktop + mobile. */
+body header,body main{max-width:1280px}
+body header{padding-block:18px;gap:18px;border-color:var(--ix-edge)}
+body header nav{gap:clamp(12px,1.8vw,23px)}
+body header nav a{font-size:.9rem;color:var(--ix-text-strong);opacity:.86}
+body header nav a:hover{opacity:1;color:var(--ix-link)}
+body main{padding-block-end:clamp(56px,6vw,90px)}
+body .hero{min-height:min(650px,79vh);padding-block:clamp(44px,6vw,88px);gap:clamp(24px,4vw,62px)}
+body :is(.hero-copy h1,.ix-home-copy h1,.gallery-intro h1){font-size:clamp(2.6rem,6.1vw,5.8rem);line-height:1.13}
+body :is(.hero-copy p,.ix-home-lead,.gallery-intro p,.identity-copy .bio){font-size:clamp(1rem,1.5vw,1.17rem);line-height:1.85;color:var(--ix-text-soft)}
+body .content-section{padding-top:clamp(36px,5.4vw,72px)}
+body .section-head{align-items:end;margin-block:clamp(18px,2.4vw,32px) 19px}
+body :is(.section-head h2,.ix-skill-intro h3){font-size:clamp(1.45rem,2.8vw,2.3rem);line-height:1.35}
+body :is(.identity,.ix-profile-section){gap:clamp(20px,4.5vw,58px)}
+body .identity{padding-block:clamp(48px,6vw,78px) 24px}
+body .identity-details{gap:clamp(14px,2vw,22px)}
+body .identity-details article{padding-top:16px;border-color:var(--ix-edge)}
+body .ix-profile-section{align-items:start}
+body :is(.ix-skill-lab,.ix-home-capabilities){margin-block:clamp(24px,3vw,40px)}
+
+/* Surfaces share the same visual hierarchy without covering special portraits
+   or replacing photos; heavy gradients are kept off text reading areas. */
+body :is(.card,.empty,.contact,.studio-banner,.side,.ix-home-lab,.ix-capability,
+  .ix-featured,.ix-featured-item,.ix-kpi,.ix-skill-management,.project-step,
+  .ix-inquiry-field,.ix-search-result){
+  border:1px solid var(--ix-edge);
+  border-radius:20px;
+  background:var(--ix-card-raised);
+  color:var(--ix-text-strong);
+}
+body :is(.card,.contact,.studio-banner,.ix-home-lab,.ix-featured,.side){box-shadow:var(--ix-soft-shadow)}
+body :is(.card,.ix-capability,.ix-featured-item,.project-step){padding:clamp(18px,2vw,27px)}
+body :is(.card,.ix-capability,.ix-featured-item,.project-step,.ix-skill-card) p{color:var(--ix-text-soft);font-size:.95rem;line-height:1.8}
+body :is(.card,.ix-capability,.ix-featured-item,.project-step,.ix-skill-card) h3{font-size:clamp(1.1rem,1.7vw,1.4rem);line-height:1.45}
+body .grid{gap:clamp(14px,2vw,24px)}
+body .showcase{background:var(--ix-card-raised);border:1px solid var(--ix-edge);border-radius:20px;min-height:205px}
+body .showcase:hover{border-color:var(--ix-link);box-shadow:var(--ix-soft-shadow)}
+body .studio-banner{background:linear-gradient(135deg,color-mix(in srgb,var(--ix-link) 7%,var(--ix-card-raised)),var(--ix-card-raised) 58%)}
+body .contact{padding:clamp(22px,3vw,42px);gap:clamp(20px,3vw,36px)}
+
+/* Separate interactive emphasis from user-editable decorative accent.
+   This prevents mint backgrounds paired with white text in light mode. */
+body :is(.primary,.assistant-toggle,.ix-skill-filters button[aria-pressed="true"]){
+  background:var(--ix-action);color:var(--ix-action-text);
+  border-color:var(--ix-action);font-weight:760;
+}
+body.light :is(.primary,.assistant-toggle,.ix-skill-filters button[aria-pressed="true"]),
+body:not(.light) :is(.primary,.assistant-toggle,.ix-skill-filters button[aria-pressed="true"]){
+  color:var(--ix-action-text);
+}
+body :is(.primary,.assistant-toggle):hover{color:var(--ix-action-text);filter:brightness(1.06)}
+body :is(.secondary,.ix-skill-filters button:not([aria-pressed="true"]),.side button){
+  color:var(--ix-text-strong);background:var(--ix-card-raised);border-color:var(--ix-edge);
+}
+body :is(.secondary,.ix-skill-filters button:not([aria-pressed="true"]),.side button):hover{color:var(--ix-link);border-color:var(--ix-link)}
+body :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select){
+  background:var(--panel);color:var(--ix-text-strong);border-color:var(--ix-edge);
+  border-radius:12px;min-height:44px;
+}
+body :is(input,textarea)::placeholder{color:var(--ix-text-soft);opacity:.9}
+body label{font-size:.9rem;font-weight:600;color:var(--ix-text-strong)}
+body .side button{font-size:.9rem;min-height:44px;text-align:start}
+body .side button.active{color:var(--ix-text-strong);background:color-mix(in srgb,var(--ix-link) 11%,var(--ix-card-raised));border-inline-start:3px solid var(--ix-link)}
+
+/* Richer skill tiles: equal padding, visible categories and readable icons. */
+body .ix-skill-lab{background:color-mix(in srgb,var(--panel) 64%,var(--bg));border:1px solid var(--ix-edge);border-radius:26px;padding:clamp(18px,2.6vw,32px)}
+body .ix-skill-grid{gap:clamp(12px,1.6vw,20px)}
+body .ix-skill-card{min-height:185px;padding:clamp(17px,2vw,25px);background:var(--ix-card-raised);border:1px solid var(--ix-edge);border-radius:18px;box-shadow:0 7px 25px #00000009}
+body .ix-skill-card:hover{transform:translateY(-3px);border-color:var(--ix-link);box-shadow:var(--ix-soft-shadow)}
+body .ix-skill-card h4{font-size:1.1rem;color:var(--ix-text-strong);line-height:1.5}
+body .ix-skill-card :is(p,.ix-skill-category,.ix-skill-proof span){color:var(--ix-text-soft);opacity:1}
+body .ix-skill-card p{font-size:.94rem}
+body .ix-skill-category{font-size:.78rem;font-weight:720}
+body .ix-skill-brand{width:52px;height:52px;border-radius:14px;background:color-mix(in srgb,var(--ix-link) 11%,var(--ix-card-raised));border:1px solid color-mix(in srgb,var(--ix-link) 36%,var(--ix-edge));color:var(--ix-link)}
+body .ix-skill-proof{border-color:var(--ix-edge);font-size:.84rem}
+body .ix-skill-evidence{color:var(--ix-link)}
+body .ix-skill-path{background:color-mix(in srgb,var(--ix-link) 7%,var(--ix-card-raised));border-color:var(--ix-edge)}
+body .ix-skill-path-step{font-size:.82rem}
+body .ix-skill-path-step b,body .ix-skill-path-arrow{color:var(--ix-link)}
+
+/* Working GitHub/LinkedIn SVGs on the live app AND built public pages. */
+body .ix-social-links{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-block:clamp(16px,2vw,24px)}
+body .ix-social-link{
+  display:inline-flex;align-items:center;justify-content:center;gap:11px;
+  min-height:48px;padding:11px 17px;border-radius:14px;
+  border:1px solid var(--ix-edge);background:var(--ix-card-raised);
+  color:var(--ix-text-strong);font-size:.95rem;font-weight:730;
+  text-decoration:none;line-height:1.3;box-shadow:0 5px 20px #0000000b;
+  transition:transform .2s ease,border-color .2s ease,background .2s ease;
+}
+body .ix-social-link .ix-social-icon{display:inline-grid;place-items:center;color:var(--ix-link);width:23px;height:23px;flex:none}
+body .ix-social-link svg{display:block;width:23px;height:23px}
+body .ix-social-link .ix-social-arrow{color:var(--ix-text-soft);font-size:1rem}
+body .ix-social-link:hover{color:var(--ix-text-strong);border-color:var(--ix-link);background:color-mix(in srgb,var(--ix-link) 8%,var(--ix-card-raised));transform:translateY(-2px)}
+body .ix-social-links.actions{margin-block:clamp(16px,2vw,24px)}
+body .ix-profile-content .ix-social-links{margin-top:24px}
+
+body footer{font-size:.86rem;gap:18px;border-color:var(--ix-edge)}
+@media(max-width:760px){
+  body .hero{min-height:0;padding-block:38px;gap:18px}
+  body .content-section{padding-top:34px}
+  body .ix-skill-lab{padding:16px;border-radius:20px}
+  body .ix-skill-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  body .identity{padding-block:35px 20px}
+  body .ix-social-link{min-height:46px}
+  body .side{gap:8px}
+}
+@media(max-width:560px){
+  body .ix-skill-grid{grid-template-columns:minmax(0,1fr)}
+  body .ix-skill-card{min-height:0;padding:19px}
+  body .ix-social-links{gap:9px}
+  body .ix-social-link{flex:1 1 auto;padding-inline:12px}
+  body .ix-social-links.actions .primary{flex:1 1 100%}
+  body header nav{gap:10px}
+}
+@media(prefers-reduced-motion:reduce){
+  body .ix-skill-card:hover,body .ix-social-link:hover{transform:none}
+  body .ix-social-link{transition:none}
 }
