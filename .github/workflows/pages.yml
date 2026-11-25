@@ -3,6 +3,9 @@ name: Publish IBRAXIS on GitHub Pages
 
 on:
   workflow_dispatch:
+  # Daily rebuild refreshes approved public GitHub / Codewars metrics (UTC).
+  schedule:
+    - cron: '15 4 * * *'
   push:
     branches: [main]
 

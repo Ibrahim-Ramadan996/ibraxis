@@ -60,7 +60,7 @@ test('live and static landing pages share gallery while admin route never expose
  assert(readFileSync('scripts/build-pages.mjs','utf8').includes("'skill-experience.js'"));
  assert(readFileSync('app/pages.js','utf8').includes('bindSkillFilters(document)'));
  assert.equal(skillRegistry.powerbi.name,'Power BI');
- assert(readFileSync('app/server.mjs','utf8').includes("'skill-experience.js'].map(f=>"));
+ assert.match(readFileSync('app/server.mjs','utf8'), /'skill-experience\.js'[^\n]*\.map\(f=>/);
 });
 
 test('Pages build exports approved skills, filters and icons, but never skill drafts',()=>{

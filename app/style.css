@@ -454,3 +454,29 @@ body footer{font-size:.86rem;gap:18px;border-color:var(--ix-edge)}
   body .ix-skill-card:hover,body .ix-social-link:hover{transform:none}
   body .ix-social-link{transition:none}
 }
+
+/* Release V2.5.3.9: project-driven work areas and source-backed achievements. */
+.ix-capability-link{display:block;text-decoration:none;color:inherit;transition:transform .2s,border-color .2s,box-shadow .2s}
+.ix-capability-link:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 12px 32px #00000012}
+.ix-capability-link:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+.ix-capability-footer{border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:22px;padding-top:14px;font-size:.85rem}
+.ix-capability-footer strong{color:var(--ink)}
+.ix-achievements{margin-block:clamp(2rem,5vw,4rem);clear:both}
+.ix-achievements-heading{margin-bottom:1.2rem;max-width:74ch}
+.ix-achievements-heading h2{font-size:clamp(1.5rem,2.6vw,2.25rem);margin:.45rem 0}
+.ix-achievements-heading p{color:var(--muted);line-height:1.7}
+.ix-achievements-eyebrow{font-size:.72rem;letter-spacing:.12em;font-weight:800;color:var(--accent2)}
+.ix-achievements-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:1rem}
+.ix-achievement-card{display:flex;flex-direction:column;gap:.65rem;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:18px;padding:1.2rem;min-width:0}
+.ix-achievement-card h3{font-size:1.14rem;line-height:1.4;margin:0;color:var(--ink)}
+.ix-achievement-description{font-size:.94rem;line-height:1.7;color:var(--muted);margin:0;overflow-wrap:anywhere}
+.ix-achievement-top,.ix-achievement-foot{display:flex;gap:.7rem;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ix-achievement-category{border:1px solid var(--line);border-radius:999px;padding:.3rem .65rem;font-weight:700;font-size:.76rem}
+.ix-achievement-platform{font-weight:700;font-size:.83rem;color:var(--muted);overflow-wrap:anywhere}
+.ix-achievement-metric{display:flex;align-items:baseline;gap:.6rem;padding:.6rem 0}
+.ix-achievement-metric strong{font-size:clamp(1.8rem,3vw,2.5rem);font-variant-numeric:tabular-nums;color:var(--ink)}
+.ix-achievement-metric span{font-size:.84rem;color:var(--muted)}
+.ix-achievement-foot{border-top:1px solid var(--line);padding-top:.85rem;margin-top:auto;font-size:.76rem;color:var(--muted);line-height:1.6}
+.ix-achievement-foot a{color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.ix-achievement-foot a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+@media(max-width:540px){.ix-achievement-card{padding:1rem}.ix-achievements-grid{grid-template-columns:1fr}}

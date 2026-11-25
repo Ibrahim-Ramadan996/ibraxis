@@ -14,6 +14,8 @@ import {tables,restoreRows} from './hybrid-codec.mjs';
 import {parseCSV,aggregateCSV} from './experience.mjs';
 import {catalogFor,validateCatalog,infer} from './catalog.js';
 import {renderPage,publicOrigin,language,sitemap} from './seo.mjs';
+import {ACHIEVEMENTS_KEY,validateAchievement,publicAchievements} from './achievements.js';
+import {fetchAchievementMetric} from './achievements-sync.mjs';
 import {createHash} from 'node:crypto';
 import {gzipSync} from 'node:zlib';
 import {projectNavigation} from './project-navigation.mjs';
@@ -54,6 +56,9 @@ const publicDownload=id=>db.prepare("SELECT d.path FROM downloads d JOIN records
 const publicStudioSpec=id=>{try{const row=db.prepare('SELECT value FROM settings WHERE key=?').get(studioKey(id));const v=JSON.parse(row?.value||'null')?.publicSpec;return v?validateStudio(v):null}catch{return null}};
 const publicExperience=id=>{const row=db.prepare("SELECT e.value FROM data_experiences e JOIN records r ON r.id=e.project_id WHERE e.project_id=? AND e.published=1 AND r.kind='project' AND r.status='published'").get(id);return row?JSON.parse(row.value):null};
 const publicShowcases=()=>db.prepare('SELECT * FROM showcases ORDER BY updated DESC').all().map(x=>({id:x.id,updated:x.updated,...JSON.parse(x.value)})).filter(isPublicShowcase);
+const achievementEntries=()=>{try{const value=db.prepare('SELECT value FROM settings WHERE key=?').get(ACHIEVEMENTS_KEY)?.value;const data=JSON.parse(value||'[]');return Array.isArray(data)?data:[]}catch{return []}};
+const publishedAchievements=()=>publicAchievements(achievementEntries());
+const saveAchievementEntries=items=>db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(ACHIEVEMENTS_KEY,JSON.stringify(items));
 if(!db.prepare('PRAGMA table_info(imports)').all().some(x=>x.name==='paths')){db.exec("ALTER TABLE imports ADD COLUMN paths TEXT NOT NULL DEFAULT '[]'");for(const row of db.prepare('SELECT id,files FROM imports').iterate())db.prepare('UPDATE imports SET paths=? WHERE id=?').run(JSON.stringify(JSON.parse(row.files).map(f=>f.path)),row.id)}
 const classify=(row,shows=[])=>{const raw=db.prepare('SELECT paths FROM imports WHERE id=?').get(row.id);const {catalog,...safe}=row;return {...safe,classification:catalogFor(row,raw?JSON.parse(raw.paths):[],shows.filter(x=>x.project_id===row.id))}};
 const classifyRows=rows=>{const shows=publicShowcases();return rows.map(x=>classify(x,shows))};
@@ -108,7 +113,7 @@ function ingestionError(r,e){
 function limited(key,max){let x=limits.get(key)||{n:0,t:Date.now()};if(Date.now()-x.t>60000)x={n:0,t:Date.now()};x.n++;limits.set(key,x);return x.n>max;}
 function clean(v,max){if(typeof v!=='string'||v.length>max)throw Error('Invalid field');return v.trim();}
 const origin=publicOrigin(process.env.PUBLIC_SITE_URL);const template=readFileSync(new URL('index.html',import.meta.url),'utf8');
-const assets=new Map(['public.js','site-features.js','home-experience.js','style.css','design.js','identity.js','catalog.js','studio.js','studio-charts.js','studio-csv.js','studio-runtime.js','analytics.js','connect.js','premium-admin.js','manager-input-panel.js','manager-site-panel.js','manager-workflows.js','premium-tools.js','profile-editor.js','skill-experience.js'].map(f=>{const data=readFileSync(new URL(f,import.meta.url));return ['/'+f,{data,gzip:gzipSync(data),etag:'"'+createHash('sha256').update(data).digest('hex')+'"',type:f.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'}]}));
+const assets=new Map(['public.js','site-features.js','home-experience.js','style.css','design.js','identity.js','catalog.js','studio.js','studio-charts.js','studio-csv.js','studio-runtime.js','analytics.js','connect.js','premium-admin.js','manager-input-panel.js','manager-site-panel.js','manager-workflows.js','premium-tools.js','profile-editor.js','skill-experience.js','achievements.js','work-areas.js'].map(f=>{const data=readFileSync(new URL(f,import.meta.url));return ['/'+f,{data,gzip:gzipSync(data),etag:'"'+createHash('sha256').update(data).digest('hex')+'"',type:f.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'}]}));
 const photoState=()=>parsePortrait(db.prepare('SELECT value FROM settings WHERE key=?').get(PROFILE_KEY)?.value);
 const approvedPhoto=()=>publicPortrait(photoState());
 const publicFeatures=()=>validatePublicFeatures(JSON.parse(readFileSync(new URL('site-features.json',import.meta.url),'utf8')));
@@ -124,15 +129,41 @@ const downloadMatch=p.match(/^\/download\/([a-f0-9]{32})$/);if(m==='GET'&&downlo
 if(m==='GET'&&p==='/profile-photo.webp'){const photo=getSite().portrait_placement==='off'?null:approvedPhoto();if(!photo)return send(r,404,{error:'Photo not published'});r.writeHead(200,{'Content-Type':'image/webp','Content-Length':photo.bytes.length,'Cache-Control':'public, max-age=3600, must-revalidate','ETag':'"'+photo.revision+'"'});return r.end(photo.bytes)}
 if(m==='GET'&&p==='/robots.txt'){r.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});return r.end('User-agent: *\n'+(origin?'Allow: /\nDisallow: /api/\nSitemap: '+origin+'/sitemap.xml\n':'Disallow: /\n'))}
 if(m==='GET'&&p==='/sitemap.xml'){r.writeHead(origin?200:404,{'Content-Type':'application/xml; charset=utf-8','Cache-Control':'no-store'});return r.end(origin?sitemap(origin,siteConfig(),publicProjects(),publicShowcases()):'<?xml version="1.0"?><error>Set PUBLIC_SITE_URL</error>')}
-if(m==='GET'&&['/','/projects','/admin'].includes(p)){const site=siteConfig();if(p==='/admin'||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,200,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,features:publicFeatures(),records:p==='/admin'?[]:publicRows(),showcases:p==='/admin'?[]:publicShowcases()}))}
+if(m==='GET'&&['/','/projects','/admin'].includes(p)){const site=siteConfig();if(p==='/admin'||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,200,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,features:publicFeatures(),records:p==='/admin'?[]:publicRows(),showcases:p==='/admin'?[]:publicShowcases(),achievements:p==='/admin'?[]:publishedAchievements()}))}
 const detail=p.match(/^\/(?:api\/public\/(record|showcase)|(project|showcase))\/([a-f0-9]{32})$/);if(m==='GET'&&detail){const isShowcase=(detail[1]||detail[2])==='showcase',id=detail[3];const rawItem=isShowcase?publicShowcases().find(x=>x.id===id):db.prepare("SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE id=? AND kind='project' AND status='published'").get(id);const v=rawItem&&!isShowcase?classify(rawItem,publicShowcases()):rawItem;if(p.startsWith('/api/'))return send(r,v?200:404,v?(isShowcase?{...v,navigation:v.project_id?projectNavigation(publicProjects(),v.project_id):null}:{...v,download:!!publicDownload(id),data_experience:publicExperience(id),studio:publicStudioSpec(id),showcases:publicShowcases().filter(x=>x.project_id===id),navigation:projectNavigation(publicProjects(),id)}):{error:'Not found'});const site=siteConfig();if(!v||!origin)r.setHeader('X-Robots-Tag','noindex, nofollow');return htmlResponse(q,r,v?200:404,renderPage({template,origin,path:p,lang:language(u.searchParams.get('lang'),site),site,features:publicFeatures(),item:v,missing:!v,showcases:publicShowcases(),navigation:v?projectNavigation(publicProjects(),isShowcase?v.project_id:id):null}))}
 if(p==='/api/login'&&m==='POST'){if(limited(ip+':login',5))return send(r,429,{error:'Try later'});const b=await body(q),a=db.prepare('SELECT * FROM users').get();if(typeof b.password!=='string'||b.password.length>256||!timingSafeEqual(scryptSync(b.password,a.salt,64),Buffer.from(a.hash,'hex')))return send(r,401,{error:'Invalid credentials'});const t=randomBytes(32).toString('hex');sessions.set(t,Date.now()+8*3600000);r.setHeader('Set-Cookie',`session=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.SECURE_COOKIE==='1'?'; Secure':''}`);audit('login');return send(r,200,{ok:true});}
 if(p==='/health'&&m==='GET')return send(r,200,{ok:true});
 if(p==='/api/showcases/public'&&m==='GET')return send(r,200,publicShowcases());
 if(p==='/api/site'&&m==='GET')return send(r,200,siteConfig());
+if(p==='/api/achievements/public'&&m==='GET')return send(r,200,publishedAchievements());
 if(p==='/api/public'&&m==='GET'){const b=u.searchParams.get('brand');return send(r,200,classifyRows(db.prepare(`SELECT id,kind,brand,title,body,status,ar_title,en_title,ar_body,en_body,icon,catalog FROM records WHERE (? IS NULL OR brand=?) AND status='published' AND kind IN (${publicKinds.map(()=>'?').join(',')}) ORDER BY created DESC,id DESC`).all(b,b,...publicKinds)));}
 if(p==='/api/inquiry'&&m==='POST'){if(limited(ip+':inquiry',5))return send(r,429,{error:'Try later'});const b=await body(q),brand=clean(b.brand,30),title=clean(b.title,150),message=clean(b.body,5000),email=clean(b.email,200);if(!['personal','technology'].includes(brand)||!title||!message||!/^\S+@\S+\.\S+$/.test(email)||b.website)return send(r,400,{error:'Invalid inquiry'});if(b.kind!==undefined&&(!requestKinds.includes(b.kind)||!budgets.includes(b.budget)||!timelines.includes(b.timeline)||b.consent!==true||!clean(b.name,100)))return send(r,400,{error:'Invalid project brief or consent'});const id=randomBytes(16).toString('hex');db.prepare('INSERT INTO records(id,kind,brand,title,body,status) VALUES(?,?,?,?,?,?)').run(id,'inquiry',brand,title,JSON.stringify({email,message,...(b.kind!==undefined?{name:clean(b.name,100),kind:b.kind,budget:b.budget,timeline:b.timeline,consent:true}:{})}),'new');return send(r,201,{id});}
 if(!p.startsWith('/api/'))return send(r,404,{error:'Not found'});if(!auth)return send(r,401,{error:'Login required'});
+if(p==='/api/achievements'&&m==='GET')return send(r,200,achievementEntries());
+if(p==='/api/achievements'&&m==='POST'){
+ if(limited(ip+':achievements',18))return send(r,429,{error:'Too many changes; try again later'});
+ const b=await body(q,12000),items=achievementEntries(),action=b.action;
+ if(items.length>60)return send(r,400,{error:'Achievement limit exceeded'});
+ if(action==='save'){
+  const v=validateAchievement({...b.item,status:'draft',source:'manual',updated_at:''});
+  if(v.id){const i=items.findIndex(x=>x.id===v.id);if(i<0)return send(r,404,{error:'Achievement not found'});items[i]={...v,id:v.id};}
+  else{if(items.length>=60)return send(r,400,{error:'Achievement limit reached'});v.id=randomBytes(16).toString('hex');items.push(v)}
+  saveAchievementEntries(items);audit('achievement draft saved '+v.id);return send(r,200,{id:v.id,status:'draft'});
+ }
+ const id=typeof b.id==='string'&&/^[a-f0-9]{32}$/.test(b.id)?b.id:'';
+ const i=items.findIndex(x=>x.id===id);if(i<0)return send(r,404,{error:'Achievement not found'});
+ if(action==='refresh'){
+  if(limited(ip+':achievements-refresh',5))return send(r,429,{error:'Refresh limit reached'});
+  try{const metric=await fetchAchievementMetric(items[i].url);items[i]={...items[i],...metric};saveAchievementEntries(items);audit('achievement refreshed '+id);return send(r,200,{ok:true,achievement:items[i]})}
+  catch(e){return send(r,422,{error:e.message})}
+ }
+ if(b.confirm!==true)return send(r,400,{error:'Confirmation required'});
+ if(action==='publish')items[i]={...items[i],status:'published'};
+ else if(action==='hide')items[i]={...items[i],status:'draft'};
+ else if(action==='remove')items.splice(i,1);
+ else return send(r,400,{error:'Invalid achievement action'});
+ saveAchievementEntries(items);audit('achievement '+action+' '+id);return send(r,200,{ok:true});
+}
 if(p==='/api/profile-photo'&&m==='GET'){
  const state=photoState();return send(r,200,{draft:state.draft?'data:image/webp;base64,'+state.draft:null,approved:!!approvedPhoto(),hasDraft:!!state.draft,appearance:design(getSite())});
 }

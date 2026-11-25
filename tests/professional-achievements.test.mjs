@@ -1,0 +1,83 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {achievementURL,validateAchievement,publicAchievements,renderAchievements,codewarsUsername,githubUsername,supportedAchievementProvider} from '../app/achievements.js';
+import {fetchAchievementMetric} from '../app/achievements-sync.mjs';
+import {areaCounts,projectInArea,WORK_AREAS} from '../app/work-areas.js';
+import {homeExperience} from '../app/home-experience.js';
+import {renderPage} from '../app/seo.mjs';
+const id='a'.repeat(32);
+const item={id,platform:'DataLemur',category:'data',title_ar:'تدريبات SQL',title_en:'SQL practice',url:'https://datalemur.com',metric_value:7,metric_label_ar:'مسائل',metric_label_en:'Problems solved',status:'published'};
+test('public professional achievements require HTTPS and safe metadata',()=>{
+ for(const url of ['http://example.com','javascript:alert(1)','https://localhost/data','https://127.0.0.1/a','https://user:pass@example.com','https://example.com:455/'])assert.throws(()=>achievementURL(url));
+ const a=validateAchievement(item);assert.equal(a.metric_value,7);assert.equal(a.source,'manual');
+ assert.throws(()=>validateAchievement({...item,metric_value:-1}));
+ assert.throws(()=>validateAchievement({...item,title_en:'',title_ar:''}));
+ assert.throws(()=>validateAchievement({...item,url:'http://example.com'}));
+});
+test('published achievements display evidence and no private drafts or HTML injection',()=>{
+ const dangerous={...item,platform:'<img src=x>',title_ar:'<script>alert(1)</script>',body_ar:'<p>secret</p>'};
+ const data=publicAchievements([{...item,status:'draft'},dangerous,{...item,id:'wrong'}]);
+ assert.equal(data.length,1);
+ const html=renderAchievements(data,'ar');assert.match(html,/إنجازاتي المهنية/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/href="https:\/\/datalemur.com\//);
+ assert.equal(renderAchievements([{...item,status:'draft'}], 'en'),'');
+});
+test('provider integration supports only allowlisted profile URLs',async()=>{
+ assert.equal(codewarsUsername('https://www.codewars.com/users/test-person'),'test-person');
+ assert.equal(githubUsername('https://github.com/example-user'),'example-user');
+ assert.equal(supportedAchievementProvider('https://datalemur.com/user/someone'),null);
+ assert.equal(supportedAchievementProvider('https://github.com/example-user/project'),null);
+ const calls=[];const get=(json)=>async(url,opts)=>{calls.push([url,opts]);return {ok:true,json:async()=>json}};
+ const cw=await fetchAchievementMetric('https://www.codewars.com/users/demo',{fetcher:get({codeChallenges:{totalCompleted:27}})});
+ assert.equal(cw.metric_value,27);assert.equal(cw.source,'api');assert.equal(calls[0][0],'https://www.codewars.com/api/v1/users/demo');
+ const gh=await fetchAchievementMetric('https://github.com/demo',{fetcher:get({public_repos:18})});
+ assert.equal(gh.metric_value,18);assert.equal(calls[1][0],'https://api.github.com/users/demo');
+ await assert.rejects(()=>fetchAchievementMetric('https://datalemur.com/user/demo',{fetcher:()=>{throw Error('Must not fetch')}}),/unavailable/);
+});
+test('work area cards use published classifications and link to filtered portfolio',()=>{
+ const data={id,kind:'project',status:'published',title:'SQL dashboard',classification:{domains:['data','bi']}};
+ const ai={...data,id:'b'.repeat(32),classification:{domains:['ai']}};
+ const draft={...data,id:'c'.repeat(32),status:'draft'};
+ assert.equal(projectInArea(data,'data'),true);assert.equal(projectInArea(ai,'data'),false);
+ assert.equal(areaCounts([data,ai,draft]).find(x=>x.id==='data').count,1);
+ assert.equal(WORK_AREAS.length,3);
+ const html=homeExperience({site:{},rows:[data,ai,draft],lang:'ar',urlFor:x=>'/ibraxis/ar'+x+'/?lang=ar'});
+ assert.match(html,/area=data/);assert.match(html,/area=ai/);assert.doesNotMatch(html,/area=build/);assert.match(html,/عرض المشاريع/);
+});
+test('static and live homepage contain public achievements and project page supports area filtering',()=>{
+ const template=readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
+ const html=renderPage({template,origin:'https://example.org',path:'/',lang:'en',site:{site_name:'Demo',section_order:['work','identity']},records:[],achievements:[item]});
+ assert.match(html,/Professional achievements/);
+ assert.equal((html.match(/ix-achievements-grid/g)||[]).length,1);
+ const admin=renderPage({template,origin:'https://example.org',path:'/admin',lang:'en',site:{},records:[],achievements:[item]});assert.doesNotMatch(admin,/ix-achievements-grid/);
+ const server=readFileSync(new URL('../app/server.mjs',import.meta.url),'utf8');
+ assert.match(server,/work-areas\.js/);
+ const pages=readFileSync(new URL('../app/pages.js',import.meta.url),'utf8');
+ assert.match(pages,/projectInArea/);
+ const client=readFileSync(new URL('../app/public.js',import.meta.url),'utf8');
+ assert.match(client,/achievementsHub\(p\)/);
+ assert.match(client,/id="gallery-area"/);
+});
+
+test('owner approves evidence while public API never exposes private drafts',async()=>{
+ const {mkdtempSync,rmSync}=await import('node:fs');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const {spawn}=await import('node:child_process');
+ const root=mkdtempSync(join(tmpdir(),'ix-achievements-http-'));
+ const port=19129,server=spawn(process.execPath,['app/server.mjs'],{env:{...process.env,PORT:String(port),DB_PATH:join(root,'db.sqlite'),DATA_DIR:join(root,'files'),OWNER_PASSWORD:'test-only-password-123'}});
+ try{
+  await new Promise((ok,fail)=>{server.stdout.once('data',ok);server.once('exit',()=>fail(Error('Server terminated')))});
+  const base=`http://127.0.0.1:${port}`;let cookie='';
+  const call=async(path,data,auth=false)=>fetch(base+path,{method:data?'POST':'GET',headers:{'Content-Type':'application/json',...(auth?{Cookie:cookie}:{})},...(data?{body:JSON.stringify(data)}:{})});
+  assert.equal((await call('/api/achievements')).status,401);
+  assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
+  const login=await call('/api/login',{password:'test-only-password-123'});assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];
+  const saved=await call('/api/achievements',{action:'save',item:{...item,id:''}},true);assert.equal(saved.status,200);const record=await saved.json();assert.match(record.id,/^[a-f0-9]{32}$/);assert.equal(record.status,'draft');
+  assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
+  const published=await call('/api/achievements',{action:'publish',id:record.id,confirm:true},true);assert.equal(published.status,200);
+  const rows=await (await call('/api/achievements/public')).json();assert.equal(rows.length,1);assert.equal(rows[0].metric_value,7);
+  assert.equal((await call('/api/achievements',{action:'hide',id:record.id,confirm:true},true)).status,200);
+  assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
+ }finally{server.kill();await new Promise(ok=>server.once('exit',ok));rmSync(root,{recursive:true,force:true})}
+});
