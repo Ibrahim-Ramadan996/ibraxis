@@ -18,3 +18,8 @@ dist/
 
 # Generated optional browser runtime
 /app/vendor/ort/
+
+# Local release archives and temporary patches (never publish or commit)
+/*.zip
+/*.patch
+/skill-css-review.txt
