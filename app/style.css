@@ -501,3 +501,86 @@ body footer{font-size:.86rem;gap:18px;border-color:var(--ix-edge)}
 .ix-achievement-no-metric p{color:var(--muted);font-size:.9rem;line-height:1.65;margin:0}
 .ix-achievement-empty{padding:1.25rem;border:1px dashed var(--line);border-radius:16px;color:var(--muted);background:var(--panel)}
 @media(max-width:540px){.ix-achievement-card{gap:.95rem}.ix-achievement-main-metric{gap:.55rem}}
+
+/* V2.5.3.11 — space-efficient professional platform cards. */
+.ix-achievements-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));
+  gap:.8rem;
+  align-items:stretch;
+}
+.ix-achievement-card{
+  box-sizing:border-box;
+  display:flex;
+  flex-direction:column;
+  width:100%;
+  max-width:320px;
+  min-height:0;
+  gap:.7rem;
+  padding:.95rem 1rem;
+  border-radius:15px;
+  text-decoration:none;
+  color:var(--ink);
+  box-shadow:0 4px 16px #00000009;
+  transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;
+}
+.ix-achievement-card:hover{
+  transform:translateY(-2px);
+  border-color:var(--accent);
+  box-shadow:0 8px 24px #00000013;
+}
+.ix-achievement-card:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.ix-achievement-top{display:flex;align-items:center;gap:.65rem;flex-wrap:nowrap;min-width:0}
+.ix-achievement-brand{
+  width:2.4rem;height:2.4rem;flex:0 0 2.4rem;
+  font-size:.8rem;border-radius:12px;
+}
+.ix-achievement-id{flex:1;min-width:0;gap:.15rem}
+.ix-achievement-platform-name{font-size:1rem;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+.ix-achievement-id>span{font-size:.78rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ix-achievement-arrow{font-size:1.15rem;flex:0 0 auto;color:var(--muted)}
+.ix-achievement-main-metric{
+  display:flex;align-items:baseline;justify-content:flex-start;
+  gap:.45rem;flex-wrap:wrap;padding:0;text-align:start;
+}
+.ix-achievement-main-metric strong{font-size:1.6rem;line-height:1.15;font-variant-numeric:tabular-nums}
+.ix-achievement-main-metric>span:last-child{
+  color:var(--muted);font-size:.76rem;flex-basis:auto;
+}
+.ix-achievement-stats{display:flex;flex-wrap:wrap;gap:.7rem;padding:0}
+.ix-achievement-stat{
+  display:inline-flex;align-items:baseline;flex-direction:row;
+  gap:.3rem;background:none;border:0;border-radius:0;padding:0;
+}
+.ix-achievement-stat strong{font-size:.85rem}
+.ix-achievement-stat small{font-size:.71rem;color:var(--muted)}
+.ix-achievement-foot{
+  display:flex;justify-content:space-between;align-items:center;
+  gap:.5rem;padding-top:.6rem;margin-top:auto;
+  border-top:1px solid var(--line);font-size:.76rem;font-weight:750;
+  color:var(--ink);line-height:1.3;
+}
+.ix-achievement-foot span:last-child{font-size:.9rem}
+@media(max-width:540px){
+  .ix-achievements-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:.65rem}
+  .ix-achievement-card{padding:.85rem .9rem;gap:.6rem}
+}
+@media(prefers-reduced-motion:reduce){.ix-achievement-card:hover{transform:none}}
+
+/* V2.5.3.11 — graceful, high-resolution brand favicon from each profile domain. */
+.ix-achievement-brand{
+ position:relative;isolation:isolate;overflow:hidden;
+ display:grid;place-items:center;
+ background:linear-gradient(140deg,color-mix(in srgb,var(--accent) 13%,var(--panel)),var(--panel));
+ border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line));
+ box-shadow:inset 0 1px 0 #ffffff18,0 3px 10px #00000010;
+ border-radius:12px;
+}
+.ix-achievement-brand-fallback{font-weight:850;font-size:.78rem;letter-spacing:.02em;transition:opacity .15s ease}
+.ix-achievement-logo{
+ position:absolute;inset:0;margin:auto;width:70%;height:70%;
+ object-fit:contain;opacity:0;transition:opacity .15s ease;
+}
+.ix-achievement-brand--loaded{background:linear-gradient(145deg,#fff,#f2f5f8);border-color:#e3e7ee}
+.ix-achievement-brand--loaded .ix-achievement-logo{opacity:1}
+.ix-achievement-brand--loaded .ix-achievement-brand-fallback{opacity:0}

@@ -1,3 +1,5 @@
+import {enhanceAchievementLogos} from './achievement-logos.js';
+enhanceAchievementLogos();
 import {bindSkillFilters} from './skill-experience.js';
 import {projectInArea,WORK_AREAS} from './work-areas.js';
 import {bindConnect} from './connect.js';
