@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {achievementURL,achievementFromURL,validateAchievement,publicAchievements,renderAchievements,codewarsUsername,githubUsername,supportedAchievementProvider} from '../app/achievements.js';
+import {achievementURL,achievementLogoURL,achievementFromURL,validateAchievement,publicAchievements,renderAchievements,codewarsUsername,githubUsername,supportedAchievementProvider} from '../app/achievements.js';
 import {fetchAchievementMetric} from '../app/achievements-sync.mjs';
 import {areaCounts,projectInArea,WORK_AREAS} from '../app/work-areas.js';
 import {homeExperience} from '../app/home-experience.js';
@@ -96,9 +96,9 @@ test('link-only input generates a professional card without invented statistics'
  const other=achievementFromURL('https://custom-work.example/portfolio/me');
  assert.equal(other.platform,'custom-work.example');assert.equal(other.metric_value,null);
  const pub=renderAchievements([{...dl,id,status:'published'}],'ar');
- assert.match(pub,/DataLemur/);assert.match(pub,/الإحصائيات تلقائيًا/);
+ assert.match(pub,/DataLemur/);assert.doesNotMatch(pub,/الإحصائيات تلقائيًا|لا تدعم حاليًا|ملفي على DataLemur|رابط المنصة فقط/);
  assert.doesNotMatch(pub,/ix-achievement-main-metric/);
- assert.match(pub,/فتح البروفايل/);
+ assert.match(pub,/زيارة الحساب/);
 });
 
 test('URL-based approved profiles show trusted API counts and detailed stats',async()=>{
@@ -108,6 +108,48 @@ test('URL-based approved profiles show trusted API counts and detailed stats',as
  assert.equal(record.profile_name,'Demo Dev');assert.equal(record.extra_stats.length,2);
  const html=renderAchievements([record],'en');
  assert.match(html,/12/);assert.match(html,/Followers/);assert.match(html,/Public gists/);
- assert.match(html,/Updated from public API/);
+ assert.doesNotMatch(html,/Updated from public API|Profile link only/);
  assert.doesNotMatch(html,/onclick=|<script>/);
+});
+
+
+test('visitor profile cards are compact, scalable and never disclose provider integration limits',()=>{
+ const profiles=[
+  {...achievementFromURL('https://leetcode.com/studyplan/top-sql-50/'),id:'b'.repeat(32),status:'published'},
+  {...achievementFromURL('https://datalemur.com/profile'),id:'c'.repeat(32),status:'published'}
+ ];
+ const html=renderAchievements(profiles,'ar');
+ assert.equal((html.match(/class="ix-achievement-card ix-achievement-card--link"/g)||[]).length,2);
+ assert.doesNotMatch(html,/لا تدعم حاليًا|الإحصائيات تلقائيًا|ملفي على|رابط البروفايل متاح|رابط المنصة فقط/);
+ assert.match(html,/LeetCode/);assert.match(html,/DataLemur/);
+ assert.match(html,/زيارة الحساب/);
+ assert.equal((html.match(/target="_blank"/g)||[]).length,2);
+ const en=renderAchievements(profiles,'en');
+ assert.doesNotMatch(en,/This platform does not currently|My LeetCode profile|Profile link only/);
+ const css=readFileSync(new URL('../app/style.css',import.meta.url),'utf8');
+ assert.match(css,/grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,230px\),1fr\)\)/);
+ assert.match(css,/max-width:320px/);
+});
+
+test('automatic platform favicons come from the validated hostname, with a privacy-safe graceful fallback',()=>{
+ assert.equal(achievementLogoURL('https://leetcode.com/studyplan/top-sql-50/'),
+  'https://www.google.com/s2/favicons?domain=leetcode.com&sz=128');
+ assert.throws(()=>achievementLogoURL('http://localhost/private'));
+ const forged=validateAchievement({...achievementFromURL('https://example.net/portfolio'),platform:'GitHub',status:'published',id});
+ const html=renderAchievements([forged], 'en');
+ assert.match(html,/domain=example.net&amp;sz=128/);
+ assert.doesNotMatch(html,/domain=github.com/);
+ assert.match(html,/class="ix-achievement-brand-fallback"/);
+ assert.match(html,/class="ix-achievement-logo" data-achievement-logo/);
+ assert.match(html,/referrerpolicy="no-referrer"/);
+ const css=readFileSync(new URL('../app/style.css',import.meta.url),'utf8');
+ assert.match(css,/ix-achievement-brand--loaded/);
+ const staticJs=readFileSync(new URL('../app/pages.js',import.meta.url),'utf8');
+ const liveJs=readFileSync(new URL('../app/public.js',import.meta.url),'utf8');
+ const build=readFileSync(new URL('../scripts/build-pages.mjs',import.meta.url),'utf8');
+ const server=readFileSync(new URL('../app/server.mjs',import.meta.url),'utf8');
+ assert.match(staticJs,/enhanceAchievementLogos\(\)/);
+ assert.match(liveJs,/enhanceAchievementLogos\(app\)/);
+ assert.match(build,/achievement-logos\.js/);
+ assert.match(server,/img-src 'self' data: https:\/\/www\.google\.com https:\/\/\*\.gstatic\.com/);
 });
