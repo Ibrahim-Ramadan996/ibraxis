@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {achievementURL,validateAchievement,publicAchievements,renderAchievements,codewarsUsername,githubUsername,supportedAchievementProvider} from '../app/achievements.js';
+import {achievementURL,achievementFromURL,validateAchievement,publicAchievements,renderAchievements,codewarsUsername,githubUsername,supportedAchievementProvider} from '../app/achievements.js';
 import {fetchAchievementMetric} from '../app/achievements-sync.mjs';
 import {areaCounts,projectInArea,WORK_AREAS} from '../app/work-areas.js';
 import {homeExperience} from '../app/home-experience.js';
@@ -19,8 +19,8 @@ test('published achievements display evidence and no private drafts or HTML inje
  const dangerous={...item,platform:'<img src=x>',title_ar:'<script>alert(1)</script>',body_ar:'<p>secret</p>'};
  const data=publicAchievements([{...item,status:'draft'},dangerous,{...item,id:'wrong'}]);
  assert.equal(data.length,1);
- const html=renderAchievements(data,'ar');assert.match(html,/إنجازاتي المهنية/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/href="https:\/\/datalemur.com\//);
- assert.equal(renderAchievements([{...item,status:'draft'}], 'en'),'');
+ const html=renderAchievements(data,'ar');assert.match(html,/إنجازاتي المهنية/);assert.match(html,/&lt;img src=x&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/href="https:\/\/datalemur.com\//);
+ const empty=renderAchievements([{...item,status:'draft'}], 'en');assert.match(empty,/Professional achievements/);assert.doesNotMatch(empty,/ix-achievement-card/);
 });
 test('provider integration supports only allowlisted profile URLs',async()=>{
  assert.equal(codewarsUsername('https://www.codewars.com/users/test-person'),'test-person');
@@ -73,6 +73,12 @@ test('owner approves evidence while public API never exposes private drafts',asy
   assert.equal((await call('/api/achievements')).status,401);
   assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
   const login=await call('/api/login',{password:'test-only-password-123'});assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];
+  const auto=await call('/api/achievements',{action:'add-url',url:'https://datalemur.com/profile'},true);assert.equal(auto.status,200);const automatic=await auto.json();assert.equal(automatic.achievement.platform,'DataLemur');assert.equal(automatic.achievement.metric_value,null);
+  assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
+  assert.equal((await call('/api/achievements',{action:'publish',id:automatic.id,confirm:true},true)).status,200);
+  const autoPublished=await (await call('/api/achievements/public')).json();assert.equal(autoPublished.length,1);assert.equal(autoPublished[0].platform,'DataLemur');assert.equal(autoPublished[0].metric_value,null);
+  assert.equal((await call('/api/achievements',{action:'hide',id:automatic.id,confirm:true},true)).status,200);assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
+  assert.equal((await call('/api/achievements',{action:'remove',id:automatic.id,confirm:true},true)).status,200);
   const saved=await call('/api/achievements',{action:'save',item:{...item,id:''}},true);assert.equal(saved.status,200);const record=await saved.json();assert.match(record.id,/^[a-f0-9]{32}$/);assert.equal(record.status,'draft');
   assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
   const published=await call('/api/achievements',{action:'publish',id:record.id,confirm:true},true);assert.equal(published.status,200);
@@ -80,4 +86,28 @@ test('owner approves evidence while public API never exposes private drafts',asy
   assert.equal((await call('/api/achievements',{action:'hide',id:record.id,confirm:true},true)).status,200);
   assert.deepEqual(await (await call('/api/achievements/public')).json(),[]);
  }finally{server.kill();await new Promise(ok=>server.once('exit',ok));rmSync(root,{recursive:true,force:true})}
+});
+
+test('link-only input generates a professional card without invented statistics',()=>{
+ const dl=achievementFromURL('https://datalemur.com/profile');
+ assert.equal(dl.platform,'DataLemur');assert.equal(dl.category,'data');
+ assert.equal(dl.metric_value,null);assert.equal(dl.source,'manual');
+ assert.equal(dl.status,'draft');assert.ok(dl.title_ar);
+ const other=achievementFromURL('https://custom-work.example/portfolio/me');
+ assert.equal(other.platform,'custom-work.example');assert.equal(other.metric_value,null);
+ const pub=renderAchievements([{...dl,id,status:'published'}],'ar');
+ assert.match(pub,/DataLemur/);assert.match(pub,/الإحصائيات تلقائيًا/);
+ assert.doesNotMatch(pub,/ix-achievement-main-metric/);
+ assert.match(pub,/فتح البروفايل/);
+});
+
+test('URL-based approved profiles show trusted API counts and detailed stats',async()=>{
+ const base=achievementFromURL('https://github.com/demo');
+ const metric=await fetchAchievementMetric(base.url,{fetcher:async()=>({ok:true,json:async()=>({login:'demo',name:'Demo Dev',public_repos:12,followers:5,public_gists:2})})});
+ const record=validateAchievement({...base,...metric,id,status:'published'});
+ assert.equal(record.profile_name,'Demo Dev');assert.equal(record.extra_stats.length,2);
+ const html=renderAchievements([record],'en');
+ assert.match(html,/12/);assert.match(html,/Followers/);assert.match(html,/Public gists/);
+ assert.match(html,/Updated from public API/);
+ assert.doesNotMatch(html,/onclick=|<script>/);
 });
