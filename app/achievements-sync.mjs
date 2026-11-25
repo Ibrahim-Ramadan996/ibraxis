@@ -11,5 +11,10 @@ export async function fetchAchievementMetric(url,{fetcher=fetch}={}){
  let data;try{data=await response.json()}catch{throw Error('Invalid provider response')}
  const count=codewars?data?.codeChallenges?.totalCompleted:data?.public_repos;
  if(!Number.isSafeInteger(count)||count<0||count>100000000)throw Error('The provider did not return a valid metric');
- return {metric_value:count,metric_label_ar:codewars?'تحديًا مكتملًا':'مستودعًا عامًا',metric_label_en:codewars?'Completed challenges':'Public repositories',source:'api',updated_at:new Date().toISOString()};
+ const stats=codewars?
+  [{value:data?.honor,label_ar:'نقاط الشرف',label_en:'Honor points'},{value:data?.codeChallenges?.totalAuthored,label_ar:'تحديات منشأة',label_en:'Authored challenges'}]:
+  [{value:data?.followers,label_ar:'متابعون',label_en:'Followers'},{value:data?.public_gists,label_ar:'مقتطفات عامة',label_en:'Public gists'}];
+ const extra_stats=stats.filter(s=>Number.isSafeInteger(s.value)&&s.value>=0&&s.value<=100000000);
+ const profile_name=String((codewars?data?.username:data?.name||data?.login)||'').slice(0,80).trim();
+ return {metric_value:count,metric_label_ar:codewars?'تحديًا مكتملًا':'مستودعًا عامًا',metric_label_en:codewars?'Completed challenges':'Public repositories',extra_stats,profile_name,source:'api',updated_at:new Date().toISOString()};
 }

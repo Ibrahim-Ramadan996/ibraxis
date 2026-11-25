@@ -14,7 +14,7 @@ import {tables,restoreRows} from './hybrid-codec.mjs';
 import {parseCSV,aggregateCSV} from './experience.mjs';
 import {catalogFor,validateCatalog,infer} from './catalog.js';
 import {renderPage,publicOrigin,language,sitemap} from './seo.mjs';
-import {ACHIEVEMENTS_KEY,validateAchievement,publicAchievements} from './achievements.js';
+import {ACHIEVEMENTS_KEY,validateAchievement,achievementFromURL,publicAchievements,supportedAchievementProvider} from './achievements.js';
 import {fetchAchievementMetric} from './achievements-sync.mjs';
 import {createHash} from 'node:crypto';
 import {gzipSync} from 'node:zlib';
@@ -144,6 +144,23 @@ if(p==='/api/achievements'&&m==='POST'){
  if(limited(ip+':achievements',18))return send(r,429,{error:'Too many changes; try again later'});
  const b=await body(q,12000),items=achievementEntries(),action=b.action;
  if(items.length>60)return send(r,400,{error:'Achievement limit exceeded'});
+ if(action==='add-url'){
+  // Never fetch arbitrary URLs; only use fixed public APIs for supported hosts.
+  const draft=achievementFromURL(b.url);
+  if(items.some(x=>x.url===draft.url&&x.id!==b.id))return send(r,409,{error:'This profile link was already added'});
+  let warning='';
+  if(supportedAchievementProvider(draft.url)){
+   try{Object.assign(draft,await fetchAchievementMetric(draft.url))}
+   catch(e){warning=e.message}
+  }else warning='This platform does not have supported automatic statistics; only its link will be displayed.';
+  draft.status='draft';
+  const existing=typeof b.id==='string'&&/^[a-f0-9]{32}$/.test(b.id)?items.findIndex(x=>x.id===b.id):-1;
+  if(b.id&&existing<0)return send(r,404,{error:'Achievement not found'});
+  if(existing>=0){draft.id=b.id;items[existing]=draft}
+  else {if(items.length>=60)return send(r,400,{error:'Achievement limit reached'});draft.id=randomBytes(16).toString('hex');items.push(draft)}
+  saveAchievementEntries(items);audit('achievement URL added '+draft.id);
+  return send(r,200,{id:draft.id,status:'draft',warning,achievement:draft});
+ }
  if(action==='save'){
   const v=validateAchievement({...b.item,status:'draft',source:'manual',updated_at:''});
   if(v.id){const i=items.findIndex(x=>x.id===v.id);if(i<0)return send(r,404,{error:'Achievement not found'});items[i]={...v,id:v.id};}
