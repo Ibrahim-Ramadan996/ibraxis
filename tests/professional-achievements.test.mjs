@@ -59,6 +59,24 @@ test('static and live homepage contain public achievements and project page supp
  assert.match(client,/id="gallery-area"/);
 });
 
+test('public homepage always places contact after achievements and custom sections',()=>{
+ const template=readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
+ const features=[{id:'abc123abc123',kind:'section',title:'Featured extra',description:'Additional public feature'}];
+ for(const lang of ['ar','en']){
+  // The site owner may have reordered contact to the beginning in the design studio.
+  const site={site_name:'IBRAXIS',section_order:['contact','identity','work'],contact_email:'owner@example.com'};
+  const html=renderPage({template,origin:'https://example.org',path:'/',lang,site,records:[],achievements:[item],features});
+  const main=html.split('<main id="app">')[1]?.split('</main>')[0];
+  assert.ok(main,'Static main should exist');
+  const achievementsAt=main.indexOf('id="achievements"'),featureAt=main.indexOf('data-ibraxis-feature='),contactAt=main.indexOf('id="contact"');
+  assert.ok(achievementsAt>=0&&featureAt>achievementsAt&&contactAt>featureAt,'Contact must follow achievements and custom sections');
+  assert.equal((main.slice(contactAt).match(/<section\b/g)||[]).length,0,'No sections may appear after contact');
+ }
+ const source=readFileSync(new URL('../app/public.js',import.meta.url),'utf8');
+ assert.match(source,/\$\{renderAchievements\(achievements,ar\?'ar':'en'\)\}\$\{renderPublicFeatures\(site\.site_features\|\|\[\],ar\)\}\$\{connectMarkup\(site,ar\)\}/,'Live homepage should also put contact last');
+ assert.match(source,/for\(const section of app\.querySelectorAll\('#achievements,\[data-ibraxis-feature\]'\)\)app\.append\(section\);const contact=document\.getElementById\('contact'\);if\(contact\)\{app\.append\(contact\)/,'Live design ordering must also put contact after every other section');
+});
+
 test('owner approves evidence while public API never exposes private drafts',async()=>{
  const {mkdtempSync,rmSync}=await import('node:fs');
  const {tmpdir}=await import('node:os');
