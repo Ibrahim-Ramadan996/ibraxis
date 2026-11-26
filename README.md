@@ -19,3 +19,6 @@ Set `PUBLIC_SITE_URL` to your actual public HTTPS origin on production only. Wit
 
 ## GitHub-only deployment
 Read [GITHUB-ONLY-AR.md](GITHUB-ONLY-AR.md). `npm run build:pages` needs `PAGES_DATA_DIR` pointing at a valid private data snapshot and `PAGES_SITE_URL` set to the real HTTPS Pages URL. The generated `dist/` is public-only; never publish the raw data repo.
+
+## November 2026 UI refresh
+The public site now uses separate bilingual pages for About, Projects, Services, Products, Articles, Experiences, Achievements and Contact rather than rendering every section on one long homepage. The administration interface groups existing tools without removing capabilities. See [UI-REDESIGN-AR.md](UI-REDESIGN-AR.md) for upgrade, testing and deployment notes.

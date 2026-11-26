@@ -4,10 +4,10 @@ import {renderPublicFeatures,validatePublicFeatures} from '../app/site-features.
 import {renderPage} from '../app/seo.mjs';
 import {design} from '../app/design.js';
 const feature={id:'a'.repeat(12),kind:'section',title:'شهاداتي',description:'إنجازات فعلية فقط',url:''};
-test('public feature HTML is escaped and feature becomes visible in SSR home',()=>{
+test('public feature HTML is escaped and feature becomes visible on the experiences page',()=>{
  const list=[feature];assert.match(renderPublicFeatures(list),/شهاداتي/);
  const template=readFileSync('app/index.html','utf8');
- const html=renderPage({template,origin:'https://example.com',path:'/',lang:'ar',site:design({}),records:[],features:list});
+ const html=renderPage({template,origin:'https://example.com',path:'/experiences',lang:'ar',site:design({}),records:[],features:list});
  assert.match(html,/data-ibraxis-feature="aaaaaaaaaaaa"/);
  assert.match(html,/إنجازات فعلية فقط/);
 });

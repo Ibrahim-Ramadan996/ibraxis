@@ -50,11 +50,12 @@ test('evidence links appear only for explicitly classified published projects',(
  assert.deepEqual(relatedPublishedProjects(other,[yes]),[]);
 });
 
-test('live and static landing pages share gallery while admin route never exposes it',()=>{
+test('the About page hosts skills and filters while admin and landing do not expose the full gallery',()=>{
  const template=readFileSync('app/index.html','utf8');
  const skills=[{id:'a'.repeat(32),kind:'skill',status:'published',title:'Excel',icon:'excel',ar_title:'إكسل',en_title:'Excel',body:'Spreadsheet analysis'}];
+ const about=renderPage({template,origin:'https://example.org',path:'/about',lang:'ar',site:{site_name:'IBRAXIS',name:'Ibrahim Ramadan'},records:skills});
  const home=renderPage({template,origin:'https://example.org',path:'/',lang:'ar',site:{site_name:'IBRAXIS',name:'Ibrahim Ramadan'},records:skills});
- assert.match(home,/ix-skill-lab/);assert.match(home,/إكسل/);
+ assert.match(about,/ix-skill-lab/);assert.match(about,/إكسل/);assert(!home.includes('ix-skill-lab'));
  const admin=renderPage({template,origin:'https://example.org',path:'/admin',lang:'ar',site:{site_name:'IBRAXIS'},records:skills});
  assert(!admin.includes('ix-skill-lab'));
  assert(readFileSync('scripts/build-pages.mjs','utf8').includes("'skill-experience.js'"));
@@ -79,7 +80,7 @@ test('Pages build exports approved skills, filters and icons, but never skill dr
   writeFileSync(join(root,'manifest.json'),json(manifest(files)));
   const result=spawnSync(process.execPath,[resolve('scripts/build-pages.mjs')],{cwd:dir,env:{...process.env,PAGES_DATA_DIR:root,PAGES_SITE_URL:'https://example.github.io/ibraxis/'},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
-  const html=readFileSync(join(dir,'dist/ar/index.html'),'utf8');
+  const html=readFileSync(join(dir,'dist/ar/about/index.html'),'utf8');
   assert.match(html,/ix-skill-lab/);
   assert.match(html,/ix-brand--powerbi/);
   assert(!html.includes('PRIVATE_SKILL_DRAFT'));
