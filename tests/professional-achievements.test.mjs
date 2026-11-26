@@ -44,9 +44,9 @@ test('work area cards use published classifications and link to filtered portfol
  const html=homeExperience({site:{},rows:[data,ai,draft],lang:'ar',urlFor:x=>'/ibraxis/ar'+x+'/?lang=ar'});
  assert.match(html,/area=data/);assert.match(html,/area=ai/);assert.doesNotMatch(html,/area=build/);assert.match(html,/عرض المشاريع/);
 });
-test('static and live homepage contain public achievements and project page supports area filtering',()=>{
+test('published professional achievements have a separate page and projects support area filtering',()=>{
  const template=readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
- const html=renderPage({template,origin:'https://example.org',path:'/',lang:'en',site:{site_name:'Demo',section_order:['work','identity']},records:[],achievements:[item]});
+ const html=renderPage({template,origin:'https://example.org',path:'/achievements',lang:'en',site:{site_name:'Demo',section_order:['work','identity']},records:[],achievements:[item]});
  assert.match(html,/Professional achievements/);
  assert.equal((html.match(/ix-achievements-grid/g)||[]).length,1);
  const admin=renderPage({template,origin:'https://example.org',path:'/admin',lang:'en',site:{},records:[],achievements:[item]});assert.doesNotMatch(admin,/ix-achievements-grid/);
@@ -59,22 +59,22 @@ test('static and live homepage contain public achievements and project page supp
  assert.match(client,/id="gallery-area"/);
 });
 
-test('public homepage always places contact after achievements and custom sections',()=>{
+test('the landing page is concise; contact, achievements and custom features have dedicated routes',()=>{
  const template=readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
  const features=[{id:'abc123abc123',kind:'section',title:'Featured extra',description:'Additional public feature'}];
  for(const lang of ['ar','en']){
-  // The site owner may have reordered contact to the beginning in the design studio.
   const site={site_name:'IBRAXIS',section_order:['contact','identity','work'],contact_email:'owner@example.com'};
-  const html=renderPage({template,origin:'https://example.org',path:'/',lang,site,records:[],achievements:[item],features});
-  const main=html.split('<main id="app">')[1]?.split('</main>')[0];
-  assert.ok(main,'Static main should exist');
-  const achievementsAt=main.indexOf('id="achievements"'),featureAt=main.indexOf('data-ibraxis-feature='),contactAt=main.indexOf('id="contact"');
-  assert.ok(achievementsAt>=0&&featureAt>achievementsAt&&contactAt>featureAt,'Contact must follow achievements and custom sections');
-  assert.equal((main.slice(contactAt).match(/<section\b/g)||[]).length,0,'No sections may appear after contact');
+  const render=path=>renderPage({template,origin:'https://example.org',path,lang,site,records:[],achievements:[item],features});
+  const home=render('/'),contact=render('/contact'),achievements=render('/achievements'),experiences=render('/experiences');
+  assert.match(home,/ix-page-directory/);
+  assert.doesNotMatch(home,/id="contact"|id="achievements"|data-ibraxis-feature=/);
+  assert.match(contact,/id="contact"/);assert.doesNotMatch(contact,/ix-achievements-grid/);
+  assert.match(achievements,/ix-achievements-grid/);assert.doesNotMatch(achievements,/id="contact"/);
+  assert.match(experiences,/data-ibraxis-feature="abc123abc123"/);assert.doesNotMatch(experiences,/id="contact"/);
  }
  const source=readFileSync(new URL('../app/public.js',import.meta.url),'utf8');
- assert.match(source,/\$\{renderAchievements\(achievements,ar\?'ar':'en'\)\}\$\{renderPublicFeatures\(site\.site_features\|\|\[\],ar\)\}\$\{connectMarkup\(site,ar\)\}/,'Live homepage should also put contact last');
- assert.match(source,/for\(const section of app\.querySelectorAll\('#achievements,\[data-ibraxis-feature\]'\)\)app\.append\(section\);const contact=document\.getElementById\('contact'\);if\(contact\)\{app\.append\(contact\)/,'Live design ordering must also put contact after every other section');
+ assert.match(source,/path==='\/contact'/);
+ assert.match(source,/path==='\/experiences'/);
 });
 
 test('owner approves evidence while public API never exposes private drafts',async()=>{

@@ -51,3 +51,10 @@ Expanded import inputs, selection preview, bounded ZIP decoder and tests.
 - Explicit approval, session-bound single-use proposals, expiry, cancellation, stale-site protection and revision history.
 - Private content drafts (including bilingual fields); questions do not require approval.
 - No autonomous public deployment, code execution, deletion, or access to private records or secrets. Existing GitHub data and Pages workflow unchanged.
+
+## 2026-11-26 — Public site multipage and admin information architecture
+- Split the long public landing into nine focused bilingual routes in both local SSR and GitHub Pages builds.
+- Move full About/skills, achievements, catalog collections, experiences, and contact to dedicated pages; keep the landing as an overview.
+- Replace the flat admin sidebar with six collapsible groups preserving all workspace destinations.
+- Add shared accessible public navigation, responsive layout styles, comfortable light-theme defaults, tests and Arabic migration notes.
+- No private database edits, automatic publication or changes to owner permissions.

@@ -28,7 +28,7 @@ test('WebP photo is bounded and validated, draft never becomes public automatica
 test('portrait integrates with bilingual home and About, remains absent from admin and hidden modes',()=>{
  const site={...design({portrait_style:'circle',portrait_placement:'both',portrait_size:'balanced',portrait_focus_x:60}),name:'Test Owner',profile_photo_src:'/profile-photo.webp?v=123456'};
  const ar=homeExperience({site,rows:[],lang:'ar'});assert.match(ar,/ix-hero-portrait/);assert.match(ar,/الصورة الشخصية/);assert.match(ar,/ix-photo--circle/);assert.match(ar,/60% 35%/);
- const t=readFileSync('app/index.html','utf8');const html=renderPage({template:t,origin:'https://example.org',path:'/',lang:'en',site});assert.match(html,/ix-profile-about/);assert.match(html,/ix-hero-portrait/);
+ const t=readFileSync('app/index.html','utf8');const html=renderPage({template:t,origin:'https://example.org',path:'/',lang:'en',site});const about=renderPage({template:t,origin:'https://example.org',path:'/about',lang:'en',site});assert.match(about,/ix-profile-about/);assert.match(html,/ix-hero-portrait/);assert.doesNotMatch(html,/ix-profile-about/);
  const admin=renderPage({template:t,origin:'https://example.org',path:'/admin',lang:'en',site});assert(!admin.includes('ix-profile-about')&&!admin.includes('ix-hero-portrait'));
  assert(!homeExperience({site:{...site,portrait_placement:'off'},lang:'en'}).includes('ix-hero-portrait'));
 });
@@ -55,7 +55,7 @@ test('owner-only photo API: private upload, explicit approval, appearance and hi
   response=await call('/api/profile-photo',{action:'appearance',portrait_style:'circle',portrait_focus_y:30},cookie);assert.equal(response.status,200);
   response=await call('/profile-photo.webp');assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/webp');assert.equal(Buffer.compare(Buffer.from(await response.arrayBuffer()),bytes),0);
   const site=await (await call('/api/site')).json();assert.match(site.profile_photo_src,/^\/profile-photo\.webp\?v=/);assert.equal(site.portrait_style,'circle');assert(!JSON.stringify(site).includes(photo64));
-  const html=await (await call('/?lang=en')).text();assert.match(html,/ix-hero-portrait/);assert.match(html,/ix-profile-about/);assert(!html.includes(photo64));
+  const html=await (await call('/?lang=en')).text();const about=await (await call('/about?lang=en')).text();assert.match(html,/ix-hero-portrait/);assert.match(about,/ix-profile-about/);assert(!html.includes(photo64));assert(!about.includes(photo64));
   assert.equal((await call('/api/profile-photo',{action:'hide'},cookie)).status,400);
   assert.equal((await call('/api/profile-photo',{action:'hide',confirm:true},cookie)).status,200);
   assert.equal((await call('/profile-photo.webp')).status,404);
