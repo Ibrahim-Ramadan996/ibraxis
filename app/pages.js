@@ -1,3 +1,27 @@
+
+// Accessible navigation dropdown.
+document.addEventListener('click', event => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+
+  for (const menu of document.querySelectorAll('.ix-nav-more[open]')) {
+    const selectedLink = target.closest('.ix-nav-extra a');
+
+    if (!menu.contains(target) || selectedLink) {
+      menu.open = false;
+    }
+  }
+}, true);
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+
+  for (const menu of document.querySelectorAll('.ix-nav-more[open]')) {
+    menu.open = false;
+    menu.querySelector('summary')?.focus();
+  }
+}, true);
+
 import {enhanceAchievementLogos} from './achievement-logos.js';
 enhanceAchievementLogos();
 import {bindSkillFilters} from './skill-experience.js';
